@@ -48,6 +48,7 @@ class GateClient:
             key=api_key,
             secret=api_secret,
         )
+        config.verify_ssl = False  # workaround for proxy SSL in cloud environments
         self._client = ApiClient(configuration=config)
         self._api = FuturesApi(self._client)
         logger.info("GateClient initialised", extra={"dry_run": dry_run})
