@@ -50,17 +50,16 @@ def _make_futures_api():
     return FuturesApi(ApiClient(configuration)), cfg
 
 
-def _get_balance() -> str:
-    """Try to fetch USDT balance via Gate.io API; return placeholder on error."""
+def _get_balance() -> float | None:
+    """Try to fetch USDT balance via Gate.io API; return None on error."""
     try:
         futures_api, cfg = _make_futures_api()
         if not cfg.GATE_API_KEY or not cfg.GATE_API_SECRET:
-            return "N/A (no API key)"
+            return None
         account = futures_api.list_futures_accounts("usdt")
-        available = float(account.available)
-        return f"{available:,.2f}"
-    except Exception as e:
-        return f"N/A"
+        return float(account.available)
+    except Exception:
+        return None
 
 
 def _get_position(symbol: str = "BTC_USDT") -> str:
@@ -69,7 +68,14 @@ def _get_position(symbol: str = "BTC_USDT") -> str:
         futures_api, cfg = _make_futures_api()
         if not cfg.GATE_API_KEY or not cfg.GATE_API_SECRET:
             return "없음"
-        positions = futures_api.get_position("usdt", symbol)
+        try:
+            positions = futures_api.get_position("usdt", symbol)
+        except Exception as inner:
+            # 404 = no position exists
+            err_str = str(inner)
+            if "404" in err_str or "POSITION_NOT_FOUND" in err_str or "not found" in err_str.lower():
+                return "없음"
+            raise
         size = float(positions.size)
         if size > 0:
             return "Long"
@@ -119,7 +125,7 @@ def api_status():
         "symbol": symbol,
         "interval": bot_params.get("interval", ""),
         "dry_run": bot_params.get("dry_run", True),
-        "balance": balance,
+        "balance": balance,  # raw float or null — formatted in JS
         "position": position,
         "leverage": leverage,
         "recent_logs": recent_logs,
@@ -228,6 +234,7 @@ def api_backtest():
         from strategies.tsmom import TSMOMStrategy
         from strategies.dual_ma import DualMAStrategy
         from strategies.bbands_rsi import BBandsRSIStrategy
+        from strategies.vol_breakout import VolBreakoutStrategy
 
         client = GateClient(
             api_key=cfg.GATE_API_KEY,
@@ -242,6 +249,7 @@ def api_backtest():
             "tsmom": TSMOMStrategy(),
             "dual_ma": DualMAStrategy(),
             "bbands_rsi": BBandsRSIStrategy(),
+            "vol_breakout": VolBreakoutStrategy(),
         }
 
         results = {}
@@ -274,3 +282,38 @@ def api_logs():
     with log_lock:
         lines = list(log_buffer)[-50:]
     return jsonify(lines)
+
+
+@app.route("/api/candles")
+def api_candles():
+    symbol = request.args.get("symbol", "BTC_USDT")
+    interval = request.args.get("interval", "5m")
+    limit = int(request.args.get("limit", 200))
+    try:
+        import config as cfg
+        from exchange.gate_client import GateClient
+        client = GateClient(
+            api_key=cfg.GATE_API_KEY,
+            api_secret=cfg.GATE_API_SECRET,
+            dry_run=True,
+        )
+        df = client.get_candles(symbol, interval=interval, limit=limit)
+        if df.empty:
+            return jsonify([])
+        records = []
+        for _, row in df.iterrows():
+            ts = row["time"]
+            if hasattr(ts, "timestamp"):
+                unix_ts = int(ts.timestamp())
+            else:
+                unix_ts = int(ts)
+            records.append({
+                "time": unix_ts,
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+            })
+        return jsonify(records)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gate.io 선물 자동매매 봇</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -278,6 +279,7 @@
         <option value="TSMOM">TSMOM (시계열 모멘텀)</option>
         <option value="DualMA">Dual MA (이중 이동평균)</option>
         <option value="BBandsRSI">BBands+RSI (볼린저밴드+RSI)</option>
+        <option value="vol_breakout">변동성 돌파 + 펀딩비 필터 (추천 🔥)</option>
       </select>
     </div>
 
@@ -392,6 +394,15 @@
     </table>
   </div>
 
+  <!-- Price Chart -->
+  <div class="card chart-card" style="grid-column: 1 / 3;">
+    <div class="backtest-header">
+      <h2>가격 차트</h2>
+      <span id="chart-symbol" style="color: var(--accent); font-size:13px;"></span>
+    </div>
+    <div id="chart-container" style="height: 350px; width: 100%;"></div>
+  </div>
+
   <!-- Strategy Info -->
   <div class="card strategy-info">
     <h2>전략 설명</h2>
@@ -450,7 +461,8 @@
     $("btn-start").disabled = isRunning;
     $("btn-stop").disabled  = !isRunning;
 
-    $("balance-val").textContent  = data.balance  || "—";
+    const balNum = (data.balance != null && !isNaN(data.balance)) ? parseFloat(data.balance) : null;
+    $("balance-val").textContent = balNum != null ? balNum.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "—";
     $("leverage-val").textContent = data.leverage || "—";
 
     const posEl = $("position-val");
@@ -554,9 +566,10 @@
 
   // ── Backtest ─────────────────────────────────────────────────────────────
   const STRATEGY_LABELS = {
-    tsmom:      "TSMOM (시계열 모멘텀)",
-    dual_ma:    "Dual MA (이중 이동평균)",
-    bbands_rsi: "BBands+RSI (볼린저밴드+RSI)",
+    tsmom:        "TSMOM (시계열 모멘텀)",
+    dual_ma:      "Dual MA (이중 이동평균)",
+    bbands_rsi:   "BBands+RSI (볼린저밴드+RSI)",
+    vol_breakout: "변동성 돌파 + 펀딩비 필터",
   };
 
   $("btn-backtest").addEventListener("click", async () => {
@@ -587,7 +600,7 @@
 
         const tbody = $("backtest-tbody");
         tbody.innerHTML = "";
-        const strategies = ["tsmom", "dual_ma", "bbands_rsi"];
+        const strategies = ["tsmom", "dual_ma", "bbands_rsi", "vol_breakout"];
         for (const key of strategies) {
           const m = d[key];
           if (!m) continue;
@@ -619,14 +632,82 @@
   function updateStatus(data) {
     _origUpdateStatus(data);
     // Extract numeric balance for capital approx
-    const raw = (data.balance || "").replace(/,/g, "");
-    const num = parseFloat(raw);
+    const num = (data.balance != null && !isNaN(data.balance)) ? parseFloat(data.balance) : NaN;
     if (!isNaN(num)) currentBalance = num;
     syncCapitalUI(data);
   }
 
   poll();
   setInterval(poll, 2000);
+
+  // ── Candlestick Chart ────────────────────────────────────────────────────
+  let chartInstance = null;
+  let candleSeries = null;
+
+  function initChart() {
+    const container = $("chart-container");
+    chartInstance = LightweightCharts.createChart(container, {
+      width: container.clientWidth,
+      height: 350,
+      layout: {
+        background: { color: "#0d1117" },
+        textColor: "#c9d1d9",
+      },
+      grid: {
+        vertLines: { color: "#21262d" },
+        horzLines: { color: "#21262d" },
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+      },
+      rightPriceScale: {
+        borderColor: "#30363d",
+      },
+      timeScale: {
+        borderColor: "#30363d",
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    });
+
+    candleSeries = chartInstance.addCandlestickSeries({
+      upColor: "#3fb950",
+      downColor: "#f85149",
+      borderVisible: false,
+      wickUpColor: "#3fb950",
+      wickDownColor: "#f85149",
+    });
+
+    window.addEventListener("resize", () => {
+      chartInstance.applyOptions({ width: container.clientWidth });
+    });
+  }
+
+  async function fetchAndRenderChart() {
+    const symbol   = $("symbol").value.trim() || "BTC_USDT";
+    const interval = $("interval").value;
+
+    try {
+      const r = await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=200`);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (!Array.isArray(data) || data.length === 0) return;
+
+      candleSeries.setData(data);
+      chartInstance.timeScale().fitContent();
+
+      const last = data[data.length - 1];
+      $("chart-symbol").textContent = `${symbol} · ${interval} · ${last.close.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2})} USDT`;
+    } catch (_) {}
+  }
+
+  initChart();
+  fetchAndRenderChart();
+  setInterval(fetchAndRenderChart, 30000);
+
+  // Refresh chart when symbol or interval changes
+  $("symbol").addEventListener("change", fetchAndRenderChart);
+  $("interval").addEventListener("change", fetchAndRenderChart);
 </script>
 </body>
 </html>

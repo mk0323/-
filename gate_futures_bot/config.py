@@ -42,5 +42,12 @@ CAPITAL_FIXED: float = 500.0    # Or use fixed USDT amount
 KELLY_MAX_POSITION_PCT: float = 0.20   # Maximum position as fraction of balance
 KELLY_MAX_DRAWDOWN_PCT: float = 0.15   # Halt trading if drawdown exceeds 15 %
 
+# --- Volatility Breakout ---
+VOL_BREAKOUT_K: float = 0.5        # Breakout multiplier
+VOL_BREAKOUT_ATR_PERIOD: int = 14  # ATR period
+VOL_BREAKOUT_SL_ATR: float = 1.5   # Stop loss in ATR units
+VOL_BREAKOUT_TP_ATR: float = 2.0   # Take profit in ATR units
+VOL_BREAKOUT_MAX_FUNDING: float = 0.001  # Max funding rate to allow entry (0.1%)
+
 # --- Bot Loop ---
 LOOP_INTERVAL_SECONDS: int = 300  # Re-evaluate every 5 minutes

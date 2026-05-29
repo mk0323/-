@@ -53,6 +53,21 @@ class GateClient:
     # Account
     # ------------------------------------------------------------------
 
+    def get_funding_rate(self, symbol: str) -> float:
+        """Return the latest funding rate for *symbol*. Returns 0.0 on error."""
+        try:
+            rates = self._api.list_futures_funding_rate_history(
+                settle=SETTLE,
+                contract=symbol,
+                limit=1,
+            )
+            if rates:
+                return float(rates[0].r)
+            return 0.0
+        except ApiException as exc:
+            logger.error("get_funding_rate failed", extra={"symbol": symbol, "error": str(exc)})
+            return 0.0
+
     def get_balance(self) -> float:
         """Return the available USDT balance in the delivery futures account."""
         try:
