@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import ta
 
 from strategies.base import BaseStrategy
 from utils.logger import get_logger
@@ -39,33 +38,37 @@ class BBandsRSIStrategy(BaseStrategy):
         self.rsi_overbought = rsi_overbought
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Internal helpers (pure numpy/pandas — no external ta library)
     # ------------------------------------------------------------------
 
     def _compute_indicators(self, df: pd.DataFrame) -> dict:
-        """Compute Bollinger Bands and RSI; return latest values."""
+        """Compute Bollinger Bands and RSI using numpy/pandas."""
         close = df["close"].astype(np.float64)
 
-        bb = ta.volatility.BollingerBands(
-            close=close,
-            window=self.bb_period,
-            window_dev=self.bb_std,
-            fillna=False,
-        )
-        rsi_indicator = ta.momentum.RSIIndicator(
-            close=close,
-            window=self.rsi_period,
-            fillna=False,
-        )
+        # Bollinger Bands
+        rolling = close.rolling(self.bb_period)
+        middle = rolling.mean()
+        std = rolling.std(ddof=0)
+        upper = middle + self.bb_std * std
+        lower = middle - self.bb_std * std
+
+        # RSI via Wilder smoothing (EWM with com = period-1)
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = (-delta).clip(lower=0)
+        avg_gain = gain.ewm(com=self.rsi_period - 1, min_periods=self.rsi_period).mean()
+        avg_loss = loss.ewm(com=self.rsi_period - 1, min_periods=self.rsi_period).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        rsi = 100.0 - (100.0 / (1.0 + rs))
 
         return {
             "close": float(close.iloc[-1]),
             "prev_close": float(close.iloc[-2]) if len(close) >= 2 else float(close.iloc[-1]),
-            "upper": float(bb.bollinger_hband().iloc[-1]),
-            "middle": float(bb.bollinger_mavg().iloc[-1]),
-            "lower": float(bb.bollinger_lband().iloc[-1]),
-            "prev_middle": float(bb.bollinger_mavg().iloc[-2]) if len(close) >= 2 else np.nan,
-            "rsi": float(rsi_indicator.rsi().iloc[-1]),
+            "upper": float(upper.iloc[-1]),
+            "middle": float(middle.iloc[-1]),
+            "lower": float(lower.iloc[-1]),
+            "prev_middle": float(middle.iloc[-2]) if len(close) >= 2 else np.nan,
+            "rsi": float(rsi.iloc[-1]),
         }
 
     # ------------------------------------------------------------------
