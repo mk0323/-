@@ -39,40 +39,33 @@ def _read_output(proc: subprocess.Popen) -> None:
         pass
 
 
+def _make_futures_api():
+    import config as cfg
+    from gate_api import ApiClient, Configuration, FuturesApi
+    configuration = Configuration(key=cfg.GATE_API_KEY, secret=cfg.GATE_API_SECRET)
+    configuration.verify_ssl = False
+    return FuturesApi(ApiClient(configuration)), cfg
+
+
 def _get_balance() -> str:
     """Try to fetch USDT balance via Gate.io API; return placeholder on error."""
     try:
-        import config as cfg
+        futures_api, cfg = _make_futures_api()
         if not cfg.GATE_API_KEY or not cfg.GATE_API_SECRET:
             return "N/A (no API key)"
-        from gate_api import ApiClient, Configuration, FuturesApi
-        configuration = Configuration(
-            host="https://api.gateio.ws/api/v4",
-            key=cfg.GATE_API_KEY,
-            secret=cfg.GATE_API_SECRET,
-        )
-        client = ApiClient(configuration)
-        futures_api = FuturesApi(client)
         account = futures_api.list_futures_accounts("usdt")
-        return str(account.total)
+        available = float(account.available)
+        return f"{available:,.2f}"
     except Exception as e:
-        return f"N/A ({e})"
+        return f"N/A"
 
 
 def _get_position(symbol: str = "BTC_USDT") -> str:
     """Try to fetch current position; return placeholder on error."""
     try:
-        import config as cfg
+        futures_api, cfg = _make_futures_api()
         if not cfg.GATE_API_KEY or not cfg.GATE_API_SECRET:
             return "없음"
-        from gate_api import ApiClient, Configuration, FuturesApi
-        configuration = Configuration(
-            host="https://api.gateio.ws/api/v4",
-            key=cfg.GATE_API_KEY,
-            secret=cfg.GATE_API_SECRET,
-        )
-        client = ApiClient(configuration)
-        futures_api = FuturesApi(client)
         positions = futures_api.get_position("usdt", symbol)
         size = float(positions.size)
         if size > 0:

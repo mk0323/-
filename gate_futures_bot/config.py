@@ -38,4 +38,4 @@ KELLY_MAX_POSITION_PCT: float = 0.20   # Maximum position as fraction of balance
 KELLY_MAX_DRAWDOWN_PCT: float = 0.15   # Halt trading if drawdown exceeds 15 %
 
 # --- Bot Loop ---
-LOOP_INTERVAL_SECONDS: int = 3600  # Re-evaluate every hour
+LOOP_INTERVAL_SECONDS: int = 300  # Re-evaluate every 5 minutes
