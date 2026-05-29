@@ -1,5 +1,5 @@
 """
-Gate.io API wrapper for USDT-margined perpetual futures.
+Gate.io API wrapper for USDT-margined delivery futures.
 
 Uses the official `gate_api` Python SDK.
 Settle currency is always "usdt".
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 try:
     import gate_api
-    from gate_api import ApiClient, Configuration, FuturesApi
+    from gate_api import ApiClient, Configuration, DeliveryApi
     from gate_api.exceptions import ApiException
     _GATE_API_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -27,7 +27,7 @@ SETTLE = "usdt"
 
 
 class GateClient:
-    """Thin wrapper around :class:`gate_api.FuturesApi`."""
+    """Thin wrapper around :class:`gate_api.DeliveryApi`."""
 
     def __init__(
         self,
@@ -46,17 +46,17 @@ class GateClient:
         )
         config.verify_ssl = False  # workaround for proxy SSL in cloud environments
         self._client = ApiClient(configuration=config)
-        self._api = FuturesApi(self._client)
-        logger.info("GateClient initialised (Perpetual Futures)", extra={"dry_run": dry_run})
+        self._api = DeliveryApi(self._client)
+        logger.info("GateClient initialised (Delivery Futures)", extra={"dry_run": dry_run})
 
     # ------------------------------------------------------------------
     # Account
     # ------------------------------------------------------------------
 
     def get_balance(self) -> float:
-        """Return the available USDT balance in the perpetual futures account."""
+        """Return the available USDT balance in the delivery futures account."""
         try:
-            account = self._api.list_futures_accounts(SETTLE)
+            account = self._api.list_delivery_accounts(SETTLE)
             available = float(account.available)
             logger.info("Fetched balance", extra={"available_usdt": available})
             return available
@@ -83,7 +83,7 @@ class GateClient:
             Columns: [time, open, high, low, close, volume]
         """
         try:
-            candles = self._api.list_futures_candlesticks(
+            candles = self._api.list_delivery_candlesticks(
                 settle=SETTLE,
                 contract=symbol,
                 interval=interval,
@@ -129,7 +129,7 @@ class GateClient:
         entry_price : float
         """
         try:
-            pos = self._api.get_position(settle=SETTLE, contract=symbol)
+            pos = self._api.get_delivery_position(settle=SETTLE, contract=symbol)
             return {
                 "size": float(pos.size),
                 "entry_price": float(pos.entry_price),
@@ -147,7 +147,7 @@ class GateClient:
             )
             return
         try:
-            self._api.update_position_leverage(
+            self._api.update_delivery_position_leverage(
                 settle=SETTLE,
                 contract=symbol,
                 leverage=str(leverage),
@@ -187,14 +187,14 @@ class GateClient:
             return
 
         try:
-            order = gate_api.FuturesOrder(
+            order = gate_api.DeliveryOrder(
                 contract=symbol,
                 size=size_int,
                 price="0",    # 0 = market order
                 tif="ioc",    # Immediate-or-cancel
                 reduce_only=reduce_only,
             )
-            result = self._api.create_futures_order(settle=SETTLE, futures_order=order)
+            result = self._api.create_delivery_order(settle=SETTLE, delivery_order=order)
             logger.info(
                 "Order placed",
                 extra={

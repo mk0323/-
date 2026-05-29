@@ -13,7 +13,9 @@ GATE_API_KEY: str = os.getenv("GATE_API_KEY", "")
 GATE_API_SECRET: str = os.getenv("GATE_API_SECRET", "")
 
 # --- Trading Pair & Leverage ---
-SYMBOL: str = "BTC_USDT"
+# Delivery Futures 계약명 형식: BTC_USDT_YYYYMMDD
+# Gate.io Futures → Delivery 탭에서 현재 계약명 확인 후 변경하세요
+SYMBOL: str = "BTC_USDT_20260925"
 LEVERAGE: int = 3
 DRY_RUN: bool = True  # Paper trading by default — set to False for live trading
 
