@@ -62,15 +62,28 @@ def _make_futures_api():
     return FuturesApi(ApiClient(configuration)), cfg
 
 
+# Cache the balance so the 2s status poll doesn't hit Gate.io every time.
+import time as _time
+_balance_cache: dict = {"value": None, "ts": 0.0}
+_BALANCE_TTL = 15.0  # seconds
+
+
 def _get_balance() -> float | None:
+    now = _time.time()
+    if now - _balance_cache["ts"] < _BALANCE_TTL and _balance_cache["value"] is not None:
+        return _balance_cache["value"]
     try:
         futures_api, cfg = _make_futures_api()
         if not cfg.GATE_API_KEY or not cfg.GATE_API_SECRET:
             return None
         account = futures_api.list_futures_accounts("usdt")
-        return float(account.available)
+        val = float(account.available)
+        _balance_cache["value"] = val
+        _balance_cache["ts"] = now
+        return val
     except Exception:
-        return None
+        # On error, return last known value rather than blanking the UI.
+        return _balance_cache["value"]
 
 
 def _get_position(symbol: str) -> str:
