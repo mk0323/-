@@ -501,6 +501,130 @@
     await poll();
   });
 
+  // ── Capital Allocation ──────────────────────────────────────────────────
+  let currentBalance = 0;
+
+  function updateCapitalApprox() {
+    const mode = document.querySelector('input[name="capital-mode"]:checked').value;
+    const val  = parseFloat($("capital-value").value) || 0;
+    let approx = "—";
+    if (currentBalance > 0) {
+      if (mode === "percent") {
+        approx = (currentBalance * val / 100).toFixed(2) + " USDT";
+      } else {
+        approx = Math.min(val, currentBalance).toFixed(2) + " USDT";
+      }
+    }
+    $("capital-approx").textContent = "≈ " + approx;
+  }
+
+  async function saveCapital() {
+    const mode  = document.querySelector('input[name="capital-mode"]:checked').value;
+    const value = parseFloat($("capital-value").value) || 0;
+    try {
+      await fetch("/api/set_capital", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, value }),
+      });
+    } catch(_) {}
+    updateCapitalApprox();
+  }
+
+  document.querySelectorAll('input[name="capital-mode"]').forEach(r => {
+    r.addEventListener("change", () => {
+      const mode = r.value;
+      $("capital-value").value = mode === "percent" ? 50 : 500;
+      saveCapital();
+    });
+  });
+
+  $("capital-value").addEventListener("change", saveCapital);
+  $("capital-value").addEventListener("input",  updateCapitalApprox);
+
+  function syncCapitalUI(data) {
+    if (!data.capital_mode) return;
+    const mode = data.capital_mode;
+    document.querySelectorAll('input[name="capital-mode"]').forEach(r => {
+      r.checked = r.value === mode;
+    });
+    $("capital-value").value = mode === "percent" ? data.capital_percent : data.capital_fixed;
+    updateCapitalApprox();
+  }
+
+  // ── Backtest ─────────────────────────────────────────────────────────────
+  const STRATEGY_LABELS = {
+    tsmom:      "TSMOM (시계열 모멘텀)",
+    dual_ma:    "Dual MA (이중 이동평균)",
+    bbands_rsi: "BBands+RSI (볼린저밴드+RSI)",
+  };
+
+  $("btn-backtest").addEventListener("click", async () => {
+    $("btn-backtest").disabled   = true;
+    $("backtest-spinner").style.display = "inline";
+    $("backtest-error").style.display   = "none";
+    $("backtest-table").style.display   = "none";
+    $("backtest-recommended").style.display = "none";
+
+    const symbol   = $("symbol").value.trim() || "BTC_USDT";
+    const interval = $("interval").value;
+
+    try {
+      const r = await fetch("/api/backtest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol, interval, limit: 500 }),
+      });
+      const d = await r.json();
+
+      if (!r.ok || d.ok === false) {
+        $("backtest-error").textContent = "오류: " + (d.error || "알 수 없는 오류");
+        $("backtest-error").style.display = "block";
+      } else {
+        const recommended = d.recommended;
+        $("recommended-name").textContent = STRATEGY_LABELS[recommended] || recommended;
+        $("backtest-recommended").style.display = "block";
+
+        const tbody = $("backtest-tbody");
+        tbody.innerHTML = "";
+        const strategies = ["tsmom", "dual_ma", "bbands_rsi"];
+        for (const key of strategies) {
+          const m = d[key];
+          if (!m) continue;
+          const tr = document.createElement("tr");
+          if (key === recommended) tr.className = "bt-row-recommended";
+          tr.innerHTML = `
+            <td>${STRATEGY_LABELS[key]}</td>
+            <td>${m.total_return_pct != null ? m.total_return_pct.toFixed(2) + "%" : "—"}</td>
+            <td>${m.win_rate != null ? (m.win_rate * 100).toFixed(1) + "%" : "—"}</td>
+            <td>${m.sharpe_ratio != null ? m.sharpe_ratio.toFixed(2) : "—"}</td>
+            <td>${m.max_drawdown_pct != null ? m.max_drawdown_pct.toFixed(2) + "%" : "—"}</td>
+            <td>${m.num_trades != null ? m.num_trades : "—"}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+        $("backtest-table").style.display = "table";
+      }
+    } catch(e) {
+      $("backtest-error").textContent = "네트워크 오류: " + e;
+      $("backtest-error").style.display = "block";
+    }
+
+    $("backtest-spinner").style.display = "none";
+    $("btn-backtest").disabled = false;
+  });
+
+  // Override updateStatus to also handle capital and balance for approx calc
+  const _origUpdateStatus = updateStatus;
+  function updateStatus(data) {
+    _origUpdateStatus(data);
+    // Extract numeric balance for capital approx
+    const raw = (data.balance || "").replace(/,/g, "");
+    const num = parseFloat(raw);
+    if (!isNaN(num)) currentBalance = num;
+    syncCapitalUI(data);
+  }
+
   poll();
   setInterval(poll, 2000);
 </script>
