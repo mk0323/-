@@ -15,7 +15,9 @@ if BOT_DIR not in sys.path:
     sys.path.insert(0, BOT_DIR)
 
 from dotenv import load_dotenv
+# Try .env in BOT_DIR and one level up
 load_dotenv(os.path.join(BOT_DIR, ".env"))
+load_dotenv(os.path.join(os.path.dirname(BOT_DIR), ".env"))
 
 app = Flask(__name__)
 
