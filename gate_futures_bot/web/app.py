@@ -157,21 +157,34 @@ def api_start():
     symbol = data.get("symbol", "BTC_USDT")
     interval = data.get("interval", "1h")
     dry_run = data.get("dry_run", True)
+    leverage = int(data.get("leverage", 10) or 10)
+    capital_mode = data.get("capital_mode", "percent")
+    capital_value = float(data.get("capital_value", 0) or 0)
 
     bot_params = {
         "strategy": strategy,
         "symbol": symbol,
         "interval": interval,
         "dry_run": dry_run,
+        "leverage": leverage,
     }
 
     with log_lock:
         log_buffer.clear()
-        log_buffer.append(f"[WEB] Starting bot: strategy={strategy}, symbol={symbol}, interval={interval}, dry_run={dry_run}")
+        log_buffer.append(
+            f"[WEB] Starting bot: strategy={strategy}, symbol={symbol}, interval={interval}, "
+            f"dry_run={dry_run}, leverage={leverage}x, capital={capital_mode}:{capital_value}"
+        )
 
     env = os.environ.copy()
     env["DRY_RUN"] = "true" if dry_run else "false"
     env["PYTHONUNBUFFERED"] = "1"  # stream child logs to the web log box in real time
+    env["LEVERAGE"] = str(leverage)
+    env["CAPITAL_MODE"] = capital_mode
+    if capital_mode == "fixed":
+        env["CAPITAL_FIXED"] = str(capital_value)
+    else:
+        env["CAPITAL_PERCENT"] = str(capital_value)
 
     try:
         bot_process = subprocess.Popen(

@@ -43,10 +43,29 @@ from strategies.tsmom import TSMOMStrategy
 from strategies.vol_breakout import VolBreakoutStrategy
 from utils.logger import get_logger
 
-# Honor DRY_RUN passed from the web dashboard (env var overrides config default).
+# Honor settings passed from the web dashboard (env vars override config defaults).
 _dry_run_env = os.getenv("DRY_RUN")
 if _dry_run_env is not None:
     config.DRY_RUN = _dry_run_env.strip().lower() in ("1", "true", "yes")
+
+if os.getenv("LEVERAGE"):
+    try:
+        config.LEVERAGE = int(float(os.getenv("LEVERAGE")))
+    except ValueError:
+        pass
+
+if os.getenv("CAPITAL_MODE"):
+    config.CAPITAL_MODE = os.getenv("CAPITAL_MODE")
+if os.getenv("CAPITAL_PERCENT"):
+    try:
+        config.CAPITAL_PERCENT = float(os.getenv("CAPITAL_PERCENT"))
+    except ValueError:
+        pass
+if os.getenv("CAPITAL_FIXED"):
+    try:
+        config.CAPITAL_FIXED = float(os.getenv("CAPITAL_FIXED"))
+    except ValueError:
+        pass
 
 logger = get_logger(__name__)
 

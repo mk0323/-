@@ -301,10 +301,8 @@
     </div>
 
     <div class="form-group">
-      <label>레버리지</label>
-      <div style="padding: 7px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
-        <span id="leverage-val">—</span>x
-      </div>
+      <label for="leverage">레버리지 (배)</label>
+      <input type="number" id="leverage" value="10" min="1" max="100" step="1" />
     </div>
 
     <div class="toggle-row">
@@ -463,7 +461,6 @@
 
     const balNum = (data.balance != null && !isNaN(data.balance)) ? parseFloat(data.balance) : null;
     $("balance-val").textContent = balNum != null ? balNum.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "—";
-    $("leverage-val").textContent = data.leverage || "—";
 
     const posEl = $("position-val");
     posEl.textContent = data.position || "없음";
@@ -484,11 +481,15 @@
   }
 
   $("btn-start").addEventListener("click", async () => {
+    const capMode = document.querySelector('input[name="capital-mode"]:checked');
     const payload = {
       strategy: $("strategy").value,
       symbol:   $("symbol").value.trim() || "BTC_USDT",
       interval: $("interval").value,
       dry_run:  $("dry-run").checked,
+      leverage: parseInt($("leverage").value) || 10,
+      capital_mode: capMode ? capMode.value : "percent",
+      capital_value: parseFloat($("capital-value").value) || 0,
     };
     $("btn-start").disabled = true;
     try {
