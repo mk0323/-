@@ -38,9 +38,15 @@ from exchange.gate_client import GateClient
 from risk.position_sizing import check_drawdown, kelly_size
 from strategies.bbands_rsi import BBandsRSIStrategy
 from strategies.base import BaseStrategy
+from strategies.dca_momentum import DCAMomentumStrategy
 from strategies.dual_ma import DualMAStrategy
+from strategies.ema_ribbon import EMARibbonStrategy
+from strategies.ichimoku import IchimokuStrategy
+from strategies.rsi_divergence import RSIDivergenceStrategy
+from strategies.supertrend import SupertrendStrategy
 from strategies.tsmom import TSMOMStrategy
 from strategies.vol_breakout import VolBreakoutStrategy
+from strategies.vwap_reversion import VWAPReversionStrategy
 from utils.logger import get_logger
 
 # Honor settings passed from the web dashboard (env vars override config defaults).
@@ -74,6 +80,12 @@ STRATEGIES: dict[str, type[BaseStrategy]] = {
     "dual_ma": DualMAStrategy,
     "bbands_rsi": BBandsRSIStrategy,
     "vol_breakout": VolBreakoutStrategy,
+    "rsi_divergence": RSIDivergenceStrategy,
+    "supertrend": SupertrendStrategy,
+    "ema_ribbon": EMARibbonStrategy,
+    "vwap_reversion": VWAPReversionStrategy,
+    "ichimoku": IchimokuStrategy,
+    "dca_momentum": DCAMomentumStrategy,
 }
 
 # Accept the names the web dashboard sends as well as the canonical keys.
@@ -85,6 +97,17 @@ STRATEGY_ALIASES: dict[str, str] = {
     "bbands_rsi": "bbands_rsi",
     "vol_breakout": "vol_breakout",
     "volbreakout": "vol_breakout",
+    "rsi_divergence": "rsi_divergence",
+    "rsidivergence": "rsi_divergence",
+    "supertrend": "supertrend",
+    "ema_ribbon": "ema_ribbon",
+    "emaribbon": "ema_ribbon",
+    "vwap_reversion": "vwap_reversion",
+    "vwapreversion": "vwap_reversion",
+    "ichimoku": "ichimoku",
+    "dca_momentum": "dca_momentum",
+    "dcamomentum": "dca_momentum",
+    "dca": "dca_momentum",
 }
 
 # Minimum candles needed per strategy to avoid warm-up issues
@@ -93,6 +116,12 @@ MIN_CANDLES: dict[str, int] = {
     "dual_ma": config.DUAL_MA_SLOW_PERIOD * 3 + 10,
     "bbands_rsi": max(config.BBANDS_RSI_BB_PERIOD, config.BBANDS_RSI_RSI_PERIOD) + 10,
     "vol_breakout": config.VOL_BREAKOUT_ATR_PERIOD + 30,
+    "rsi_divergence": 50,
+    "supertrend": 30,
+    "ema_ribbon": 100,
+    "vwap_reversion": 30,
+    "ichimoku": 100,
+    "dca_momentum": 70,
 }
 
 

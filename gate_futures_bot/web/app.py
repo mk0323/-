@@ -260,6 +260,12 @@ def api_backtest():
         from strategies.dual_ma import DualMAStrategy
         from strategies.bbands_rsi import BBandsRSIStrategy
         from strategies.vol_breakout import VolBreakoutStrategy
+        from strategies.rsi_divergence import RSIDivergenceStrategy
+        from strategies.supertrend import SupertrendStrategy
+        from strategies.ema_ribbon import EMARibbonStrategy
+        from strategies.vwap_reversion import VWAPReversionStrategy
+        from strategies.ichimoku import IchimokuStrategy
+        from strategies.dca_momentum import DCAMomentumStrategy
 
         client = GateClient(
             api_key=cfg.GATE_API_KEY,
@@ -275,6 +281,12 @@ def api_backtest():
             "dual_ma": DualMAStrategy(),
             "bbands_rsi": BBandsRSIStrategy(),
             "vol_breakout": VolBreakoutStrategy(),
+            "rsi_divergence": RSIDivergenceStrategy(),
+            "supertrend": SupertrendStrategy(),
+            "ema_ribbon": EMARibbonStrategy(),
+            "vwap_reversion": VWAPReversionStrategy(),
+            "ichimoku": IchimokuStrategy(),
+            "dca_momentum": DCAMomentumStrategy(),
         }
 
         results = {}
@@ -298,6 +310,131 @@ def api_backtest():
         results["recommended"] = best
         return jsonify(results)
 
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/recommend")
+def api_recommend():
+    """
+    Recommend top coins to trade and suggest leverage based on volatility.
+    Scans a fixed watchlist, computes 24h momentum + ATR-based volatility score.
+    """
+    WATCHLIST = [
+        "BTC_USDT", "ETH_USDT", "SOL_USDT", "BNB_USDT", "XRP_USDT",
+        "DOGE_USDT", "ADA_USDT", "AVAX_USDT", "LINK_USDT", "DOT_USDT",
+        "OP_USDT", "ARB_USDT", "SUI_USDT", "APT_USDT", "INJ_USDT",
+    ]
+    try:
+        import config as cfg
+        from exchange.gate_client import GateClient
+
+        client = GateClient(
+            api_key=cfg.GATE_API_KEY,
+            api_secret=cfg.GATE_API_SECRET,
+            dry_run=True,
+        )
+
+        scores = []
+        for symbol in WATCHLIST:
+            try:
+                df = client.get_candles(symbol, interval="1h", limit=48)
+                if df.empty or len(df) < 24:
+                    continue
+                close = df["close"].to_numpy(dtype=float)
+                high = df["high"].to_numpy(dtype=float)
+                low = df["low"].to_numpy(dtype=float)
+
+                # 24h momentum
+                momentum_24h = (close[-1] - close[-24]) / close[-24] * 100
+
+                # ATR-based volatility (last 14 bars)
+                tr = [max(high[i] - low[i],
+                          abs(high[i] - close[i - 1]),
+                          abs(low[i] - close[i - 1])) for i in range(1, len(close))]
+                atr = float(sum(tr[-14:]) / 14)
+                atr_pct = atr / close[-1] * 100
+
+                # Volume momentum (last 6h vs prev 6h)
+                vol = df["volume"].to_numpy(dtype=float)
+                vol_ratio = (vol[-6:].mean() / (vol[-12:-6].mean() + 1e-10))
+
+                # Score = |momentum| * vol_ratio / atr_pct (higher = more signal per unit risk)
+                score = abs(momentum_24h) * vol_ratio / (atr_pct + 0.01)
+
+                # Leverage recommendation: lower volatility → higher safe leverage
+                # Cap at 10x, floor at 2x
+                rec_leverage = max(2, min(10, int(round(1.5 / (atr_pct + 0.01)))))
+
+                scores.append({
+                    "symbol": symbol,
+                    "momentum_24h": round(momentum_24h, 2),
+                    "atr_pct": round(atr_pct, 3),
+                    "vol_ratio": round(vol_ratio, 2),
+                    "score": round(score, 3),
+                    "rec_leverage": rec_leverage,
+                    "direction": "long" if momentum_24h > 0 else "short",
+                })
+            except Exception:
+                continue
+
+        scores.sort(key=lambda x: x["score"], reverse=True)
+        return jsonify({"ok": True, "recommendations": scores[:5]})
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/trades")
+def api_trades():
+    """Return simulated trade entry points from the last backtest run for chart overlay."""
+    symbol = request.args.get("symbol", "BTC_USDT")
+    interval = request.args.get("interval", "5m")
+    strategy_name = request.args.get("strategy", "dual_ma")
+    limit = int(request.args.get("limit", 200))
+    try:
+        import config as cfg
+        from exchange.gate_client import GateClient
+        from backtest.engine import run_backtest
+        from strategies.tsmom import TSMOMStrategy
+        from strategies.dual_ma import DualMAStrategy
+        from strategies.bbands_rsi import BBandsRSIStrategy
+        from strategies.vol_breakout import VolBreakoutStrategy
+        from strategies.rsi_divergence import RSIDivergenceStrategy
+        from strategies.supertrend import SupertrendStrategy
+        from strategies.ema_ribbon import EMARibbonStrategy
+        from strategies.vwap_reversion import VWAPReversionStrategy
+        from strategies.ichimoku import IchimokuStrategy
+        from strategies.dca_momentum import DCAMomentumStrategy
+
+        strategy_map = {
+            "tsmom": TSMOMStrategy, "dual_ma": DualMAStrategy,
+            "bbands_rsi": BBandsRSIStrategy, "vol_breakout": VolBreakoutStrategy,
+            "rsi_divergence": RSIDivergenceStrategy, "supertrend": SupertrendStrategy,
+            "ema_ribbon": EMARibbonStrategy, "vwap_reversion": VWAPReversionStrategy,
+            "ichimoku": IchimokuStrategy, "dca_momentum": DCAMomentumStrategy,
+        }
+        strategy_cls = strategy_map.get(strategy_name, DualMAStrategy)
+
+        client = GateClient(api_key=cfg.GATE_API_KEY, api_secret=cfg.GATE_API_SECRET, dry_run=True)
+        df = client.get_candles(symbol, interval=interval, limit=limit)
+        if df.empty:
+            return jsonify([])
+
+        metrics = run_backtest(strategy=strategy_cls(), df=df, initial_capital=1000.0, leverage=cfg.LEVERAGE)
+        trades = metrics.get("trades", [])
+
+        result = []
+        for t in trades:
+            result.append({
+                "time": t["entry_time"],
+                "price": t["entry_price"],
+                "direction": t["direction"],
+                "exit_time": t.get("exit_time"),
+                "exit_price": t.get("exit_price"),
+                "pnl_pct": t.get("pnl_pct"),
+            })
+        return jsonify(result)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

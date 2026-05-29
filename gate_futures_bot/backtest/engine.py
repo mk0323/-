@@ -46,9 +46,11 @@ def run_backtest(
     equity = initial_capital
     equity_curve = []
     trade_log = []  # list of (pnl_pct) per completed trade
+    trades = []     # detailed trade list for chart overlay
 
     current_position = 0  # 1=long, -1=short, 0=flat
     entry_price = 0.0
+    entry_time = None
 
     for t in range(n - 1):
         # Compute signal on data up to and including bar t (no lookahead)
@@ -60,6 +62,12 @@ def run_backtest(
 
         # Bar t+1 open price — execution price
         exec_price = float(df["open"].iloc[t + 1])
+        exec_time_raw = df["time"].iloc[t + 1]
+        try:
+            exec_time = int(exec_time_raw.timestamp()) if hasattr(exec_time_raw, "timestamp") else int(exec_time_raw)
+        except Exception:
+            exec_time = 0
+
         if exec_price <= 0:
             equity_curve.append(equity)
             continue
@@ -73,19 +81,32 @@ def run_backtest(
                 pass
 
             if should_exit or (signal != 0 and signal != current_position):
-                # Close at exec_price
                 pnl_pct = current_position * (exec_price - entry_price) / entry_price * leverage
                 trade_pnl = equity * pnl_pct
                 equity += trade_pnl
                 equity = max(equity, 0.0)
                 trade_log.append(pnl_pct)
+                if entry_time is not None:
+                    trades[-1]["exit_time"] = exec_time
+                    trades[-1]["exit_price"] = exec_price
+                    trades[-1]["pnl_pct"] = round(pnl_pct * 100, 3)
                 current_position = 0
                 entry_price = 0.0
+                entry_time = None
 
         # --- Enter new position ---
         if signal != 0 and current_position == 0:
             current_position = signal
             entry_price = exec_price
+            entry_time = exec_time
+            trades.append({
+                "entry_time": exec_time,
+                "entry_price": exec_price,
+                "direction": "long" if signal == 1 else "short",
+                "exit_time": None,
+                "exit_price": None,
+                "pnl_pct": None,
+            })
 
         equity_curve.append(equity)
 
@@ -98,10 +119,13 @@ def run_backtest(
             equity += trade_pnl
             equity = max(equity, 0.0)
             trade_log.append(pnl_pct)
+            if trades and trades[-1]["exit_time"] is None:
+                trades[-1]["exit_price"] = last_price
+                trades[-1]["pnl_pct"] = round(pnl_pct * 100, 3)
 
     equity_curve.append(equity)
 
-    return _compute_metrics(initial_capital, equity, equity_curve, trade_log)
+    return _compute_metrics(initial_capital, equity, equity_curve, trade_log, trades)
 
 
 def _compute_metrics(
@@ -109,6 +133,7 @@ def _compute_metrics(
     final_equity: float,
     equity_curve: list,
     trade_log: list,
+    trades: list | None = None,
 ) -> dict:
     ec = np.array(equity_curve, dtype=np.float64)
     num_trades = len(trade_log)
@@ -164,6 +189,7 @@ def _compute_metrics(
         "sharpe_ratio": round(sharpe_ratio, 4),
         "num_trades": num_trades,
         "equity_curve": [round(float(v), 4) for v in ec],
+        "trades": trades or [],
     }
 
 
@@ -177,4 +203,5 @@ def _empty_metrics(initial_capital: float) -> dict:
         "sharpe_ratio": 0.0,
         "num_trades": 0,
         "equity_curve": [initial_capital],
+        "trades": [],
     }
