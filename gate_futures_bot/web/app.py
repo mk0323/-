@@ -171,11 +171,12 @@ def api_start():
 
     env = os.environ.copy()
     env["DRY_RUN"] = "true" if dry_run else "false"
+    env["PYTHONUNBUFFERED"] = "1"  # stream child logs to the web log box in real time
 
     try:
         bot_process = subprocess.Popen(
             [
-                sys.executable, "main.py",
+                sys.executable, "-u", "main.py",
                 "--strategy", strategy,
                 "--symbol", symbol,
                 "--interval", interval,

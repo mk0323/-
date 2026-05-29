@@ -11,10 +11,27 @@ Usage
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
+import warnings
+
+# Quiet the noisy "InsecureRequestWarning" so the web log box stays readable.
+warnings.filterwarnings("ignore")
+try:
+    import urllib3
+    urllib3.disable_warnings()
+except Exception:
+    pass
 
 from dotenv import load_dotenv
+
+# Load .env from cwd and from the project root (one level up), so the bot works
+# whether launched from the repo root or from inside gate_futures_bot/.
+load_dotenv()
+_HERE = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_HERE, ".env"))
+load_dotenv(os.path.join(os.path.dirname(_HERE), ".env"))
 
 import config
 from exchange.gate_client import GateClient
@@ -23,9 +40,13 @@ from strategies.bbands_rsi import BBandsRSIStrategy
 from strategies.base import BaseStrategy
 from strategies.dual_ma import DualMAStrategy
 from strategies.tsmom import TSMOMStrategy
+from strategies.vol_breakout import VolBreakoutStrategy
 from utils.logger import get_logger
 
-load_dotenv()
+# Honor DRY_RUN passed from the web dashboard (env var overrides config default).
+_dry_run_env = os.getenv("DRY_RUN")
+if _dry_run_env is not None:
+    config.DRY_RUN = _dry_run_env.strip().lower() in ("1", "true", "yes")
 
 logger = get_logger(__name__)
 
@@ -33,6 +54,18 @@ STRATEGIES: dict[str, type[BaseStrategy]] = {
     "tsmom": TSMOMStrategy,
     "dual_ma": DualMAStrategy,
     "bbands_rsi": BBandsRSIStrategy,
+    "vol_breakout": VolBreakoutStrategy,
+}
+
+# Accept the names the web dashboard sends as well as the canonical keys.
+STRATEGY_ALIASES: dict[str, str] = {
+    "tsmom": "tsmom",
+    "dualma": "dual_ma",
+    "dual_ma": "dual_ma",
+    "bbandsrsi": "bbands_rsi",
+    "bbands_rsi": "bbands_rsi",
+    "vol_breakout": "vol_breakout",
+    "volbreakout": "vol_breakout",
 }
 
 # Minimum candles needed per strategy to avoid warm-up issues
@@ -40,20 +73,31 @@ MIN_CANDLES: dict[str, int] = {
     "tsmom": config.TSMOM_LOOKBACK_DAYS + config.TSMOM_VOL_WINDOW + 10,
     "dual_ma": config.DUAL_MA_SLOW_PERIOD * 3 + 10,
     "bbands_rsi": max(config.BBANDS_RSI_BB_PERIOD, config.BBANDS_RSI_RSI_PERIOD) + 10,
+    "vol_breakout": config.VOL_BREAKOUT_ATR_PERIOD + 30,
 }
+
+
+def _normalize_strategy(name: str) -> str:
+    key = STRATEGY_ALIASES.get(name.strip().lower())
+    if key is None:
+        raise SystemExit(
+            f"Unknown strategy '{name}'. Choose one of: {', '.join(STRATEGIES.keys())}"
+        )
+    return key
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Gate.io USDT perpetual futures bot")
     parser.add_argument(
         "--strategy",
-        choices=list(STRATEGIES.keys()),
         required=True,
-        help="Trading strategy to use",
+        help="Trading strategy: tsmom | dual_ma | bbands_rsi | vol_breakout",
     )
     parser.add_argument("--symbol", default=config.SYMBOL, help="Contract, e.g. BTC_USDT")
     parser.add_argument("--interval", default="1h", help="Candle interval, e.g. 1h, 4h, 1d")
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.strategy = _normalize_strategy(args.strategy)
+    return args
 
 
 def get_capital(balance: float) -> float:
@@ -84,9 +128,21 @@ def run(args: argparse.Namespace) -> None:
         dry_run=config.DRY_RUN,
     )
 
+    # Startup diagnostics — surfaced in the web log box.
+    if not config.GATE_API_KEY or not config.GATE_API_SECRET:
+        logger.error("API key/secret missing. Check your .env (GATE_API_KEY / GATE_API_SECRET).")
+    else:
+        logger.info("API key detected", extra={"key_prefix": config.GATE_API_KEY[:6]})
+
     client.set_leverage(args.symbol, config.LEVERAGE)
 
-    peak_balance: float = client.get_balance()
+    peak_balance = client.get_balance()
+    if peak_balance != peak_balance:  # NaN check
+        logger.error(
+            "Could not fetch balance from Gate.io. "
+            "Check API permissions (Perpetual Futures) and IP allowlist."
+        )
+        peak_balance = 0.0
     current_position: int = 0  # tracked locally; 1=long, -1=short, 0=flat
 
     logger.info(
@@ -104,6 +160,10 @@ def run(args: argparse.Namespace) -> None:
         try:
             # ── 1. Drawdown guard ────────────────────────────────────────
             balance = client.get_balance()
+            if balance != balance:  # NaN — API failure this cycle
+                logger.warning("Balance fetch failed this cycle; retrying.")
+                time.sleep(config.LOOP_INTERVAL_SECONDS)
+                continue
             if balance > peak_balance:
                 peak_balance = balance
 
