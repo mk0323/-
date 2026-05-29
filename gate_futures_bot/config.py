@@ -1,5 +1,5 @@
 """
-Trading configuration for the Gate.io USDT perpetual futures bot.
+Trading configuration for the Gate.io USDT delivery futures bot.
 All sensitive values are loaded from environment variables.
 """
 
@@ -13,7 +13,9 @@ GATE_API_KEY: str = os.getenv("GATE_API_KEY", "")
 GATE_API_SECRET: str = os.getenv("GATE_API_SECRET", "")
 
 # --- Trading Pair & Leverage ---
-SYMBOL: str = "BTC_USDT"
+# Delivery Futures contract name format: BTC_USDT_YYYYMMDD (분기 만기일)
+# Gate.io 거래소에서 현재 활성 계약명을 확인하세요 (예: BTC_USDT_20260925)
+SYMBOL: str = "BTC_USDT_20260925"
 LEVERAGE: int = 3
 DRY_RUN: bool = True  # Paper trading by default — set to False for live trading
 
