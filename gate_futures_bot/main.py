@@ -56,6 +56,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def get_capital(balance: float) -> float:
+    """Return the capital to use for position sizing based on config settings."""
+    if config.CAPITAL_MODE == "fixed":
+        return min(config.CAPITAL_FIXED, balance)
+    # default: "percent"
+    return balance * config.CAPITAL_PERCENT / 100.0
+
+
 def contracts_from_usdt(size_usdt: float, last_price: float, leverage: int) -> int:
     """Convert a USDT notional size to integer contract count."""
     if last_price <= 0:
@@ -142,8 +150,9 @@ def run(args: argparse.Namespace) -> None:
                     current_position = 0
 
                 # Size using Kelly (conservative defaults when no trade history)
+                capital = get_capital(balance)
                 size_usdt = kelly_size(
-                    balance=balance,
+                    balance=capital,
                     win_rate=0.55,       # conservative prior
                     avg_win=0.02,
                     avg_loss=0.015,

@@ -33,6 +33,11 @@ BBANDS_RSI_RSI_PERIOD: int = 14
 BBANDS_RSI_RSI_OVERSOLD: int = 35
 BBANDS_RSI_RSI_OVERBOUGHT: int = 65
 
+# --- Capital Allocation ---
+CAPITAL_MODE: str = "percent"   # "percent" or "fixed"
+CAPITAL_PERCENT: float = 50.0   # Use 50% of available balance
+CAPITAL_FIXED: float = 500.0    # Or use fixed USDT amount
+
 # --- Kelly / Risk Management ---
 KELLY_MAX_POSITION_PCT: float = 0.20   # Maximum position as fraction of balance
 KELLY_MAX_DRAWDOWN_PCT: float = 0.15   # Halt trading if drawdown exceeds 15 %

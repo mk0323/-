@@ -27,6 +27,9 @@ log_buffer: deque = deque(maxlen=200)
 bot_params: dict = {}
 log_lock = threading.Lock()
 
+# Runtime capital allocation overrides (not persisted to file)
+capital_config: dict = {}
+
 
 def _read_output(proc: subprocess.Popen) -> None:
     """Background thread: continuously read subprocess stdout/stderr into buffer."""
@@ -97,12 +100,18 @@ def api_status():
     balance = _get_balance()
     position = _get_position(symbol)
 
-    # Try to read leverage from config
+    # Try to read leverage and capital config
     try:
         import config as cfg
         leverage = cfg.LEVERAGE
+        capital_mode = capital_config.get("mode", cfg.CAPITAL_MODE)
+        capital_percent = capital_config.get("percent", cfg.CAPITAL_PERCENT)
+        capital_fixed = capital_config.get("fixed", cfg.CAPITAL_FIXED)
     except Exception:
         leverage = "N/A"
+        capital_mode = capital_config.get("mode", "percent")
+        capital_percent = capital_config.get("percent", 50.0)
+        capital_fixed = capital_config.get("fixed", 500.0)
 
     return jsonify({
         "running": running,
@@ -114,6 +123,9 @@ def api_status():
         "position": position,
         "leverage": leverage,
         "recent_logs": recent_logs,
+        "capital_mode": capital_mode,
+        "capital_percent": capital_percent,
+        "capital_fixed": capital_fixed,
     })
 
 
@@ -178,6 +190,83 @@ def api_stop():
     with log_lock:
         log_buffer.append("[WEB] Bot stopped.")
     return jsonify({"ok": True})
+
+
+@app.route("/api/set_capital", methods=["POST"])
+def api_set_capital():
+    global capital_config
+    data = request.get_json(force=True, silent=True) or {}
+    mode = data.get("mode", "percent")
+    value = data.get("value", 50.0)
+    if mode not in ("percent", "fixed"):
+        return jsonify({"ok": False, "error": "mode must be 'percent' or 'fixed'"}), 400
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "value must be a number"}), 400
+
+    if mode == "percent":
+        capital_config["mode"] = "percent"
+        capital_config["percent"] = value
+    else:
+        capital_config["mode"] = "fixed"
+        capital_config["fixed"] = value
+    return jsonify({"ok": True, "capital_config": capital_config})
+
+
+@app.route("/api/backtest", methods=["POST"])
+def api_backtest():
+    data = request.get_json(force=True, silent=True) or {}
+    symbol = data.get("symbol", "BTC_USDT")
+    interval = data.get("interval", "5m")
+    limit = int(data.get("limit", 500))
+
+    try:
+        import config as cfg
+        from exchange.gate_client import GateClient
+        from backtest.engine import run_backtest
+        from strategies.tsmom import TSMOMStrategy
+        from strategies.dual_ma import DualMAStrategy
+        from strategies.bbands_rsi import BBandsRSIStrategy
+
+        client = GateClient(
+            api_key=cfg.GATE_API_KEY,
+            api_secret=cfg.GATE_API_SECRET,
+            dry_run=True,
+        )
+        df = client.get_candles(symbol, interval=interval, limit=limit)
+        if df.empty:
+            return jsonify({"ok": False, "error": "No candle data returned"}), 500
+
+        strategies = {
+            "tsmom": TSMOMStrategy(),
+            "dual_ma": DualMAStrategy(),
+            "bbands_rsi": BBandsRSIStrategy(),
+        }
+
+        results = {}
+        for name, strategy in strategies.items():
+            metrics = run_backtest(
+                strategy=strategy,
+                df=df,
+                initial_capital=1000.0,
+                leverage=cfg.LEVERAGE,
+            )
+            results[name] = {
+                "total_return_pct": metrics["total_return_pct"],
+                "win_rate": metrics["win_rate"],
+                "sharpe_ratio": metrics["sharpe_ratio"],
+                "max_drawdown_pct": metrics["max_drawdown_pct"],
+                "num_trades": metrics["num_trades"],
+            }
+
+        # Recommend strategy with highest Sharpe ratio
+        best = max(results, key=lambda k: results[k]["sharpe_ratio"])
+        results["recommended"] = best
+        return jsonify(results)
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/logs")
