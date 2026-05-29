@@ -471,6 +471,10 @@
     $("interval-val").textContent = data.interval || "—";
 
     updateLogs(data.recent_logs || []);
+
+    // Track balance for capital approx and sync capital UI
+    if (balNum != null) currentBalance = balNum;
+    syncCapitalUI(data);
   }
 
   async function poll() {
@@ -627,16 +631,6 @@
     $("backtest-spinner").style.display = "none";
     $("btn-backtest").disabled = false;
   });
-
-  // Override updateStatus to also handle capital and balance for approx calc
-  const _origUpdateStatus = updateStatus;
-  function updateStatus(data) {
-    _origUpdateStatus(data);
-    // Extract numeric balance for capital approx
-    const num = (data.balance != null && !isNaN(data.balance)) ? parseFloat(data.balance) : NaN;
-    if (!isNaN(num)) currentBalance = num;
-    syncCapitalUI(data);
-  }
 
   poll();
   setInterval(poll, 2000);
