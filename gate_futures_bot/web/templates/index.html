@@ -96,6 +96,12 @@
     .btn-bot-stop:hover { opacity: .85; }
     .btn-bot-chart { flex: none; padding: 5px 14px; background: var(--surface2); color: var(--accent); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
     .btn-bot-chart:hover { border-color: var(--accent); }
+
+    /* Position status block */
+    .pos-block { margin: 8px 0; }
+    .pos-status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+    .pos-details { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); padding: 4px 0; }
+    .pos-details span b { color: var(--text); }
     .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-line.warn  { color: var(--yellow); }
     .log-line.error { color: var(--red); }
@@ -389,7 +395,36 @@ function renderBots(bots) {
 
     const statusClass = bot.running ? "running" : "stopped";
     const statusLabel = bot.running ? "실행중" : "정지";
-    const dryLabel = bot.dry_run ? " · DRY" : " · LIVE";
+
+    // Position holding block
+    const isHolding = bot.pos_status === "홀딩중";
+    const dirColor  = bot.pos_direction === "Long" ? "var(--green)" : "var(--red)";
+    const pnl       = bot.pos_pnl ?? 0;
+    const pnlColor  = pnl >= 0 ? "var(--green)" : "var(--red)";
+    const pnlSign   = pnl >= 0 ? "+" : "";
+
+    let posBlock = "";
+    if (isHolding) {
+      posBlock = `
+        <div class="pos-block">
+          <div class="pos-status-badge" style="background:${dirColor}22;border:1px solid ${dirColor};color:${dirColor};">
+            ● 홀딩중 &nbsp;|&nbsp; ${bot.pos_direction === "Long" ? "▲ Long" : "▼ Short"}
+          </div>
+          <div class="pos-details">
+            <span>진입가 <b>$${(bot.pos_entry||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
+            <span>미실현 손익 <b style="color:${pnlColor}">${pnlSign}${pnl.toFixed(4)} USDT</b></span>
+            <span>청산가 <b style="color:var(--red)">$${(bot.pos_liq||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
+            <span>수량 <b>${Math.abs(bot.pos_size||0)} 계약</b></span>
+          </div>
+        </div>`;
+    } else {
+      posBlock = `
+        <div class="pos-block">
+          <div class="pos-status-badge" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);">
+            ○ 관망중 — 신호 대기
+          </div>
+        </div>`;
+    }
 
     const logHtml = (bot.recent_logs || []).slice(-20).map(l =>
       `<div class="log-line ${classifyLog(l)}">${escHtml(l)}</div>`
@@ -399,13 +434,14 @@ function renderBots(bots) {
       <div class="bot-card-header">
         <h3>${bot.symbol}</h3>
         <span class="bot-badge ${statusClass}"><span class="dot"></span>${statusLabel}</span>
+        <span style="font-size:11px;color:${bot.dry_run?'var(--yellow)':'var(--red)'};">${bot.dry_run?'DRY RUN':'LIVE'}</span>
       </div>
       <div class="bot-meta">
         <span>전략 <b>${bot.strategy}</b></span>
         <span>주기 <b>${bot.interval}</b></span>
         <span>레버리지 <b>${bot.leverage}x</b></span>
-        <span style="color:${bot.dry_run ? 'var(--yellow)' : 'var(--red)'}"><b>${bot.dry_run ? 'DRY RUN' : 'LIVE'}</b></span>
       </div>
+      ${posBlock}
       <div class="bot-log">${logHtml}</div>
       <div class="bot-actions">
         ${bot.running ? `<button class="btn-bot-stop" onclick="stopBot('${bot.bot_id}')">■ 정지</button>` : ""}

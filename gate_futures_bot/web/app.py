@@ -86,26 +86,40 @@ def _get_balance() -> float | None:
         return _balance_cache["value"]
 
 
-def _get_position(symbol: str) -> str:
+def _get_position_detail(symbol: str) -> dict:
+    """Return full position detail for dashboard display."""
+    empty = {"status": "관망중", "direction": "", "size": 0,
+             "entry_price": 0, "unrealized_pnl": 0, "liq_price": 0, "leverage": 0}
     try:
         futures_api, cfg = _make_futures_api()
         if not cfg.GATE_API_KEY or not cfg.GATE_API_SECRET:
-            return "없음"
+            return empty
         try:
-            positions = futures_api.get_position("usdt", symbol)
+            pos = futures_api.get_position("usdt", symbol)
         except Exception as inner:
             err_str = str(inner)
             if "404" in err_str or "POSITION_NOT_FOUND" in err_str or "not found" in err_str.lower():
-                return "없음"
+                return empty
             raise
-        size = float(positions.size)
-        if size > 0:
-            return "Long"
-        elif size < 0:
-            return "Short"
-        return "없음"
+        size = float(pos.size)
+        if size == 0:
+            return empty
+        return {
+            "status":         "홀딩중",
+            "direction":      "Long" if size > 0 else "Short",
+            "size":           size,
+            "entry_price":    float(pos.entry_price)    if pos.entry_price    else 0,
+            "unrealized_pnl": float(pos.unrealised_pnl) if pos.unrealised_pnl else 0,
+            "liq_price":      float(pos.liq_price)      if pos.liq_price      else 0,
+            "leverage":       int(pos.leverage)          if pos.leverage       else 0,
+        }
     except Exception:
-        return "없음"
+        return {**empty, "status": "조회실패"}
+
+
+def _get_position(symbol: str) -> str:
+    d = _get_position_detail(symbol)
+    return d["direction"] if d["direction"] else d["status"]
 
 
 def _launch_bot(bot_id: str, params: dict) -> subprocess.Popen:
@@ -161,18 +175,28 @@ def api_status():
 
     bots_status = []
     with bots_lock:
-        for bot_id, info in list(bots.items()):
-            running = info["process"].poll() is None
-            recent_logs = list(info["log_buffer"])[-30:]
-            bots_status.append({
-                "bot_id":   bot_id,
-                "running":  running,
-                "symbol":   info["params"]["symbol"],
-                "strategy": info["params"]["strategy"],
-                "interval": info["params"]["interval"],
-                "dry_run":  info["params"]["dry_run"],
-                "leverage": info["params"]["leverage"],
-                "recent_logs": recent_logs,
+        bot_list = list(bots.items())
+
+    for bot_id, info in bot_list:
+        running = info["process"].poll() is None
+        recent_logs = list(info["log_buffer"])[-30:]
+        symbol = info["params"]["symbol"]
+        pos = _get_position_detail(symbol)
+        bots_status.append({
+                "bot_id":         bot_id,
+                "running":        running,
+                "symbol":         symbol,
+                "strategy":       info["params"]["strategy"],
+                "interval":       info["params"]["interval"],
+                "dry_run":        info["params"]["dry_run"],
+                "leverage":       info["params"]["leverage"],
+                "recent_logs":    recent_logs,
+                "pos_status":     pos["status"],
+                "pos_direction":  pos["direction"],
+                "pos_size":       pos["size"],
+                "pos_entry":      pos["entry_price"],
+                "pos_pnl":        pos["unrealized_pnl"],
+                "pos_liq":        pos["liq_price"],
             })
 
     return jsonify({
