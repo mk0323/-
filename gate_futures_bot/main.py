@@ -270,15 +270,28 @@ def run(args: argparse.Namespace) -> None:
                     client.close_position(args.symbol)
                     current_position = 0
 
-                # Size using Kelly (conservative defaults when no trade history)
+                # ── 포지션 사이징 ────────────────────────────────────────
+                # capital = 사용자가 설정한 마진 금액 (고정 USDT 또는 잔고 %)
+                # 고정 금액 모드: 500 USDT를 그대로 마진으로 사용 (Kelly로 재축소 안 함)
+                # 비율 모드: Kelly로 적절한 비중 산출 (잔고의 최대 KELLY_MAX_POSITION_PCT)
                 capital = get_capital(balance)
-                size_usdt = kelly_size(
-                    balance=capital,
-                    win_rate=0.55,       # conservative prior
-                    avg_win=0.02,
-                    avg_loss=0.015,
-                    max_pct=config.KELLY_MAX_POSITION_PCT,
-                )
+
+                if config.CAPITAL_MODE == "fixed":
+                    # 사용자가 직접 지정한 금액 = 마진 그대로 사용
+                    size_usdt = capital
+                else:
+                    # 비율 모드: Kelly로 포지션 크기 계산
+                    size_usdt = kelly_size(
+                        balance=capital,
+                        win_rate=0.55,
+                        avg_win=0.02,
+                        avg_loss=0.015,
+                        max_pct=config.KELLY_MAX_POSITION_PCT,
+                    )
+
+                # 안전장치: 잔고 대비 최대 비율 초과 방지
+                max_allowed = balance * config.KELLY_MAX_POSITION_PCT * 5  # 최대 100%
+                size_usdt = min(size_usdt, max_allowed)
 
                 # Apply vol scalar if strategy supports it (TSMOM)
                 if hasattr(strategy, "compute_vol_scalar"):
