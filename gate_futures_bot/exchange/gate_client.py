@@ -53,6 +53,19 @@ class GateClient:
     # Account
     # ------------------------------------------------------------------
 
+    def get_contract_multiplier(self, symbol: str) -> float:
+        """
+        Return the quanto multiplier for *symbol* (size of 1 contract in coin units).
+        e.g. BTC_USDT perpetual = 0.0001 BTC per contract. Returns 1.0 on error.
+        """
+        try:
+            contract = self._api.get_futures_contract(settle=SETTLE, contract=symbol)
+            mult = float(contract.quanto_multiplier)
+            return mult if mult > 0 else 1.0
+        except ApiException as exc:
+            logger.error("get_contract_multiplier failed", extra={"symbol": symbol, "error": str(exc)})
+            return 1.0
+
     def get_funding_rate(self, symbol: str) -> float:
         """Return the latest funding rate for *symbol*. Returns 0.0 on error."""
         try:

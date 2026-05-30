@@ -156,12 +156,21 @@ def get_capital(balance: float) -> float:
     return balance * config.CAPITAL_PERCENT / 100.0
 
 
-def contracts_from_usdt(size_usdt: float, last_price: float, leverage: int) -> int:
-    """Convert a USDT notional size to integer contract count."""
-    if last_price <= 0:
+def contracts_from_usdt(
+    size_usdt: float, last_price: float, leverage: int, multiplier: float = 1.0
+) -> int:
+    """
+    Convert a USDT margin amount to an integer contract count.
+
+    On Gate.io, 1 contract = ``multiplier`` units of the coin (e.g. BTC_USDT
+    perpetual = 0.0001 BTC), so the USDT value of one contract is
+    ``last_price * multiplier``. Target notional = margin * leverage.
+    """
+    if last_price <= 0 or multiplier <= 0:
         return 0
-    notional_per_contract = last_price  # 1 contract = 1 unit of the coin at Gate.io
-    contracts = int((size_usdt * leverage) / notional_per_contract)
+    notional_per_contract = last_price * multiplier
+    target_notional = size_usdt * leverage
+    contracts = int(target_notional / notional_per_contract)
     return max(contracts, 1)
 
 
@@ -183,6 +192,10 @@ def run(args: argparse.Namespace) -> None:
         logger.info("API key detected", extra={"key_prefix": config.GATE_API_KEY[:6]})
 
     client.set_leverage(args.symbol, config.LEVERAGE)
+
+    # Contract spec — how many coin units one contract represents.
+    multiplier = client.get_contract_multiplier(args.symbol)
+    logger.info("Contract multiplier", extra={"symbol": args.symbol, "multiplier": multiplier})
 
     peak_balance = client.get_balance()
     if peak_balance != peak_balance:  # NaN check
@@ -272,13 +285,16 @@ def run(args: argparse.Namespace) -> None:
                     scalar = strategy.compute_vol_scalar(df)
                     size_usdt *= scalar
 
-                n_contracts = contracts_from_usdt(size_usdt, last_price, config.LEVERAGE)
+                n_contracts = contracts_from_usdt(
+                    size_usdt, last_price, config.LEVERAGE, multiplier
+                )
                 signed_contracts = n_contracts * signal
 
                 logger.info(
                     "Placing order",
                     extra={
                         "size_usdt": size_usdt,
+                        "notional_usdt": size_usdt * config.LEVERAGE,
                         "contracts": signed_contracts,
                         "direction": "long" if signal == 1 else "short",
                     },
