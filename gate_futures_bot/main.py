@@ -204,7 +204,9 @@ def run(args: argparse.Namespace) -> None:
             "Check API permissions (Perpetual Futures) and IP allowlist."
         )
         peak_balance = 0.0
-    current_position: int = 0  # tracked locally; 1=long, -1=short, 0=flat
+    current_position: int = 0  # synced from exchange every cycle
+    last_entry_price: float = 0.0
+    last_contracts: int = 0
 
     logger.info(
         "Bot started",
@@ -236,14 +238,33 @@ def run(args: argparse.Namespace) -> None:
                 time.sleep(config.LOOP_INTERVAL_SECONDS)
                 continue
 
-            # ── 2. Fetch candles ─────────────────────────────────────────
+            # ── 2. 실제 포지션 동기화 (폰에서 수정해도 반영) ─────────────
+            real_pos = client.get_position(args.symbol)
+            real_size = real_pos["size"]
+            if real_size > 0:
+                actual_position = 1
+            elif real_size < 0:
+                actual_position = -1
+            else:
+                actual_position = 0
+
+            if actual_position != current_position:
+                logger.info(
+                    "Position synced from exchange",
+                    extra={"was": current_position, "now": actual_position, "real_size": real_size},
+                )
+                current_position = actual_position
+                if actual_position != 0:
+                    last_entry_price = real_pos.get("entry_price", 0.0)
+
+            # ── 3. Fetch candles ─────────────────────────────────────────
             df = client.get_candles(args.symbol, interval=args.interval, limit=limit)
             if df.empty:
                 logger.warning("Empty candle data; retrying next cycle")
                 time.sleep(config.LOOP_INTERVAL_SECONDS)
                 continue
 
-            # ── 3. Compute signal ────────────────────────────────────────
+            # ── 4. Compute signal ────────────────────────────────────────
             signal = strategy.compute_signal(df)
             last_price = float(df["close"].iloc[-1])
 
@@ -257,16 +278,20 @@ def run(args: argparse.Namespace) -> None:
                 },
             )
 
-            # ── 4. Exit logic ────────────────────────────────────────────
+            # ── 5. Exit logic ────────────────────────────────────────────
             if current_position != 0 and strategy.should_exit(df, current_position):
                 logger.info("Exit condition met — closing position")
+                client.cancel_all_stop_orders(args.symbol)
                 client.close_position(args.symbol)
                 current_position = 0
+                last_entry_price = 0.0
+                last_contracts = 0
 
-            # ── 5. Entry logic ───────────────────────────────────────────
+            # ── 6. Entry logic ───────────────────────────────────────────
             if signal != 0 and signal != current_position:
                 # Close any existing opposite position first
                 if current_position != 0:
+                    client.cancel_all_stop_orders(args.symbol)
                     client.close_position(args.symbol)
                     current_position = 0
 
@@ -314,6 +339,21 @@ def run(args: argparse.Namespace) -> None:
                 )
                 client.place_order(args.symbol, signed_contracts)
                 current_position = signal
+                last_entry_price = last_price
+                last_contracts = n_contracts
+
+                # 거래소에 Stop-Loss 등록 (봇/PC 종료 시에도 자동 청산)
+                # SL = 진입가에서 ATR 1.5배 또는 레버리지 역수의 60% 거리
+                sl_distance_pct = min(0.015, 0.6 / config.LEVERAGE)
+                if signal == 1:   # 롱
+                    sl_price = round(last_price * (1 - sl_distance_pct), 2)
+                else:             # 숏
+                    sl_price = round(last_price * (1 + sl_distance_pct), 2)
+                client.set_stop_loss(args.symbol, sl_price, n_contracts)
+                logger.info(
+                    "Stop-loss registered on exchange",
+                    extra={"sl_price": sl_price, "distance_pct": sl_distance_pct * 100},
+                )
 
         except KeyboardInterrupt:
             logger.info("Shutdown requested — closing position")

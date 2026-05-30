@@ -250,3 +250,60 @@ class GateClient:
             extra={"symbol": symbol, "current_size": current_size, "close_size": close_size},
         )
         self.place_order(symbol, close_size, reduce_only=True)
+
+    def set_stop_loss(self, symbol: str, stop_price: float, size: int) -> None:
+        """
+        Register a stop-loss price-triggered order on the exchange.
+        Survives bot crash / PC shutdown — the exchange executes it automatically.
+
+        Parameters
+        ----------
+        symbol     : e.g. "BTC_USDT"
+        stop_price : Trigger price for the stop order
+        size       : Contract count to close (positive value; direction set to reduce-only)
+        """
+        if self.dry_run:
+            logger.info(
+                "[DRY RUN] set_stop_loss skipped",
+                extra={"symbol": symbol, "stop_price": stop_price, "size": size},
+            )
+            return
+        try:
+            # Gate.io price-triggered order (stop market)
+            price_trigger = gate_api.FuturesPriceTrigger(
+                strategy_type=0,      # 0 = price triggered
+                price_type=0,         # 0 = last price
+                price=str(stop_price),
+                rule=2 if size < 0 else 1,  # 1=price>=trigger(short SL), 2=price<=trigger(long SL)
+                expiration=86400,     # 24h expiry
+            )
+            initial_order = gate_api.FuturesInitialOrder(
+                contract=symbol,
+                size=-abs(size),      # close = opposite sign of position
+                price="0",            # market order
+                tif="ioc",
+                reduce_only=True,
+            )
+            trigger_order = gate_api.FuturesPriceTriggeredOrder(
+                initial=initial_order,
+                trigger=price_trigger,
+            )
+            result = self._api.create_price_triggered_order(
+                settle=SETTLE, futures_price_triggered_order=trigger_order
+            )
+            logger.info(
+                "Stop-loss order placed",
+                extra={"symbol": symbol, "stop_price": stop_price, "order_id": result.id},
+            )
+        except ApiException as exc:
+            logger.error("set_stop_loss failed", extra={"symbol": symbol, "error": str(exc)})
+
+    def cancel_all_stop_orders(self, symbol: str) -> None:
+        """Cancel all pending price-triggered (stop) orders for *symbol*."""
+        if self.dry_run:
+            return
+        try:
+            self._api.cancel_price_triggered_order_list(settle=SETTLE, contract=symbol)
+            logger.info("Cancelled all stop orders", extra={"symbol": symbol})
+        except ApiException as exc:
+            logger.error("cancel_all_stop_orders failed", extra={"symbol": symbol, "error": str(exc)})
