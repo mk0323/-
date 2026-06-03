@@ -121,16 +121,25 @@ class GateClient:
             logger.error("get_candles failed", extra={"symbol": symbol, "error": str(exc)})
             return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
+        def _f(v, default=0.0):
+            try:
+                return float(v) if v is not None else default
+            except (TypeError, ValueError):
+                return default
+
         records = []
         for c in candles:
+            close = _f(c.c)
+            if close == 0.0:
+                continue  # skip empty/invalid candles
             records.append(
                 {
                     "time": pd.Timestamp(c.t, unit="s", tz="UTC"),
-                    "open": float(c.o),
-                    "high": float(c.h),
-                    "low": float(c.l),
-                    "close": float(c.c),
-                    "volume": float(c.v),
+                    "open":   _f(c.o, close),
+                    "high":   _f(c.h, close),
+                    "low":    _f(c.l, close),
+                    "close":  close,
+                    "volume": _f(c.v),
                 }
             )
 

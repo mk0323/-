@@ -39,13 +39,20 @@ class IchimokuStrategy(BaseStrategy):
 
         tenkan, kijun, senkou_a, senkou_b = _ichimoku(df)
 
-        price = float(df["close"].iloc[-1])
-        t = float(tenkan.iloc[-1])
-        k = float(kijun.iloc[-1])
-        sa = float(senkou_a.iloc[-1])
-        sb = float(senkou_b.iloc[-1])
+        def _safe(v):
+            try:
+                f = float(v)
+                return f if not np.isnan(f) else None
+            except (TypeError, ValueError):
+                return None
 
-        if any(np.isnan([t, k, sa, sb])):
+        price = _safe(df["close"].iloc[-1])
+        t  = _safe(tenkan.iloc[-1])
+        k  = _safe(kijun.iloc[-1])
+        sa = _safe(senkou_a.iloc[-1])
+        sb = _safe(senkou_b.iloc[-1])
+
+        if any(v is None for v in [price, t, k, sa, sb]):
             return 0
 
         cloud_top = max(sa, sb)
