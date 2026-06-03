@@ -86,10 +86,17 @@ def _get_balance() -> float | None:
         return _balance_cache["value"]
 
 
+_position_cache: dict = {}  # symbol → {"value": dict, "ts": float}
+_POSITION_TTL = 5.0
+
+
 def _get_position_detail(symbol: str) -> dict:
-    """Return full position detail for dashboard display."""
+    """Return full position detail for dashboard display (cached 5s)."""
     empty = {"status": "관망중", "direction": "", "size": 0,
              "entry_price": 0, "unrealized_pnl": 0, "liq_price": 0, "leverage": 0}
+    cached = _position_cache.get(symbol)
+    if cached and _time.time() - cached["ts"] < _POSITION_TTL:
+        return cached["value"]
     try:
         futures_api, cfg = _make_futures_api()
         if not cfg.GATE_API_KEY or not cfg.GATE_API_SECRET:
@@ -99,12 +106,14 @@ def _get_position_detail(symbol: str) -> dict:
         except Exception as inner:
             err_str = str(inner)
             if "404" in err_str or "POSITION_NOT_FOUND" in err_str or "not found" in err_str.lower():
+                _position_cache[symbol] = {"value": empty, "ts": _time.time()}
                 return empty
             raise
         size = float(pos.size)
         if size == 0:
+            _position_cache[symbol] = {"value": empty, "ts": _time.time()}
             return empty
-        return {
+        result = {
             "status":         "홀딩중",
             "direction":      "Long" if size > 0 else "Short",
             "size":           size,
@@ -113,6 +122,8 @@ def _get_position_detail(symbol: str) -> dict:
             "liq_price":      float(pos.liq_price)      if pos.liq_price      else 0,
             "leverage":       int(pos.leverage)          if pos.leverage       else 0,
         }
+        _position_cache[symbol] = {"value": result, "ts": _time.time()}
+        return result
     except Exception:
         return {**empty, "status": "조회실패"}
 
@@ -511,3 +522,201 @@ def api_candles():
         return jsonify(records)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/indicators")
+def api_indicators():
+    """Return technical indicator series for chart overlay (EMA, BBands, RSI, MACD)."""
+    symbol   = request.args.get("symbol", "BTC_USDT")
+    interval = request.args.get("interval", "5m")
+    limit    = int(request.args.get("limit", 200))
+    try:
+        import config as cfg
+        import numpy as np
+        import pandas as pd
+        from exchange.gate_client import GateClient
+        client = GateClient(api_key=cfg.GATE_API_KEY, api_secret=cfg.GATE_API_SECRET, dry_run=True)
+        df = client.get_candles(symbol, interval=interval, limit=limit)
+        if df.empty:
+            return jsonify({})
+
+        close = df["close"].astype(float)
+        times = [int(t.timestamp()) if hasattr(t, "timestamp") else int(t) for t in df["time"]]
+
+        def series(values):
+            out = []
+            for t, v in zip(times, values):
+                if v is not None and not (isinstance(v, float) and (np.isnan(v))):
+                    out.append({"time": t, "value": round(float(v), 4)})
+            return out
+
+        ema20 = close.ewm(span=20, adjust=False).mean()
+        ema50 = close.ewm(span=50, adjust=False).mean()
+
+        # Bollinger Bands (20, 2σ)
+        ma20  = close.rolling(20).mean()
+        std20 = close.rolling(20).std()
+        bb_up = ma20 + 2 * std20
+        bb_lo = ma20 - 2 * std20
+
+        # RSI(14)
+        delta = close.diff()
+        gain = delta.clip(lower=0).ewm(com=13, adjust=False).mean()
+        loss = (-delta.clip(upper=0)).ewm(com=13, adjust=False).mean()
+        rsi = 100 - 100 / (1 + gain / (loss + 1e-10))
+
+        # MACD (12,26,9)
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
+        macd = ema12 - ema26
+        macd_signal = macd.ewm(span=9, adjust=False).mean()
+        macd_hist = macd - macd_signal
+
+        return jsonify({
+            "ema20": series(ema20), "ema50": series(ema50),
+            "bb_upper": series(bb_up), "bb_lower": series(bb_lo), "bb_mid": series(ma20),
+            "rsi": series(rsi),
+            "macd": series(macd), "macd_signal": series(macd_signal), "macd_hist": series(macd_hist),
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/pnl")
+def api_pnl():
+    """Aggregate realized PnL stats and equity curve from the trade history CSV."""
+    try:
+        import config as cfg
+        from utils.trade_log import read_trades
+        from datetime import datetime, timezone, timedelta
+
+        path = os.path.join(BOT_DIR, cfg.TRADE_LOG_FILE)
+        rows = read_trades(path)
+        exits = [r for r in rows if r.get("event") == "exit"]
+
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=7)
+
+        total_pnl = today_pnl = week_pnl = 0.0
+        wins = losses = 0
+        equity_curve = []
+        cum = 0.0
+        for r in exits:
+            try:
+                pnl = float(r.get("pnl_usdt", 0) or 0)
+                ts = datetime.fromisoformat(r["timestamp"])
+            except Exception:
+                continue
+            total_pnl += pnl
+            cum += pnl
+            equity_curve.append({"time": int(ts.timestamp()), "value": round(cum, 4)})
+            if ts >= today_start: today_pnl += pnl
+            if ts >= week_start:  week_pnl += pnl
+            if pnl > 0: wins += 1
+            elif pnl < 0: losses += 1
+
+        n = wins + losses
+        win_rate = (wins / n * 100) if n else 0.0
+        return jsonify({
+            "ok": True,
+            "total_pnl": round(total_pnl, 4),
+            "today_pnl": round(today_pnl, 4),
+            "week_pnl":  round(week_pnl, 4),
+            "win_rate":  round(win_rate, 1),
+            "num_trades": n, "wins": wins, "losses": losses,
+            "equity_curve": equity_curve,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/heatmap")
+def api_heatmap():
+    """24h change + volatility for a basket of coins (for the heatmap view)."""
+    COINS = [
+        "BTC_USDT", "ETH_USDT", "SOL_USDT", "BNB_USDT", "XRP_USDT",
+        "DOGE_USDT", "ADA_USDT", "AVAX_USDT", "LINK_USDT", "DOT_USDT",
+        "OP_USDT", "ARB_USDT", "SUI_USDT", "APT_USDT", "INJ_USDT", "TON_USDT",
+    ]
+    try:
+        import config as cfg
+        from exchange.gate_client import GateClient
+        client = GateClient(api_key=cfg.GATE_API_KEY, api_secret=cfg.GATE_API_SECRET, dry_run=True)
+        out = []
+        for sym in COINS:
+            try:
+                df = client.get_candles(sym, interval="1h", limit=25)
+                if df.empty or len(df) < 24:
+                    continue
+                close = df["close"].astype(float).to_numpy()
+                chg = (close[-1] - close[-24]) / close[-24] * 100
+                high = df["high"].astype(float).to_numpy()
+                low  = df["low"].astype(float).to_numpy()
+                vol_pct = float(((high - low) / close).mean() * 100)
+                out.append({
+                    "symbol": sym, "change_24h": round(chg, 2),
+                    "volatility": round(vol_pct, 2), "price": round(float(close[-1]), 4),
+                })
+            except Exception:
+                continue
+        out.sort(key=lambda x: x["change_24h"], reverse=True)
+        return jsonify({"ok": True, "coins": out})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/funding")
+def api_funding():
+    """Funding rate + long/short account ratio for a basket of coins (market sentiment)."""
+    COINS = ["BTC_USDT", "ETH_USDT", "SOL_USDT", "BNB_USDT", "XRP_USDT", "DOGE_USDT"]
+    try:
+        import config as cfg
+        from exchange.gate_client import GateClient
+        client = GateClient(api_key=cfg.GATE_API_KEY, api_secret=cfg.GATE_API_SECRET, dry_run=True)
+        out = []
+        for sym in COINS:
+            row = {"symbol": sym, "funding_rate": None, "long_short_ratio": None}
+            try:
+                row["funding_rate"] = round(client.get_funding_rate(sym) * 100, 4)
+            except Exception:
+                pass
+            try:
+                stats = client._api.list_contract_stats(settle="usdt", contract=sym, limit=1)
+                if stats:
+                    lsr = getattr(stats[0], "lsr_account", None) or getattr(stats[0], "top_lsr_account", None)
+                    if lsr is not None:
+                        row["long_short_ratio"] = round(float(lsr), 3)
+            except Exception:
+                pass
+            out.append(row)
+        return jsonify({"ok": True, "coins": out})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Config persistence (save/load bot settings)
+# ---------------------------------------------------------------------------
+_SETTINGS_FILE = os.path.join(BOT_DIR, "dashboard_settings.json")
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    import json
+    if request.method == "POST":
+        data = request.get_json(force=True, silent=True) or {}
+        try:
+            with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+    # GET
+    try:
+        if os.path.exists(_SETTINGS_FILE):
+            with open(_SETTINGS_FILE, encoding="utf-8") as f:
+                return jsonify({"ok": True, "settings": json.load(f)})
+    except Exception:
+        pass
+    return jsonify({"ok": True, "settings": {}})

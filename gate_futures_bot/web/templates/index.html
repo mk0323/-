@@ -109,6 +109,33 @@
 
     #no-bots-msg { color: var(--text-muted); font-size: 13px; padding: 20px; text-align: center; }
 
+    /* PnL */
+    .pnl-card { grid-column: 1 / 3; }
+    .pnl-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+    .pnl-stat { flex: 1; min-width: 110px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; text-align: center; }
+    .pnl-stat .lbl { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .pnl-stat .val { display: block; font-size: 18px; font-weight: 700; }
+
+    /* Indicator toggles */
+    .indicator-toggles { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; color: var(--text-muted); }
+    .indicator-toggles label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+    .indicator-toggles input { accent-color: var(--accent); }
+
+    /* Heatmap */
+    .heatmap-card { grid-column: 1 / 3; }
+    .heatmap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+    .heat-cell { border-radius: 6px; padding: 10px; text-align: center; border: 1px solid var(--border); }
+    .heat-cell .sym { font-size: 12px; font-weight: 700; }
+    .heat-cell .chg { font-size: 16px; font-weight: 700; margin: 4px 0; }
+    .heat-cell .vol { font-size: 10px; opacity: .8; }
+
+    /* Funding */
+    .funding-card { grid-column: 1 / 3; }
+    #funding-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    #funding-table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+    #funding-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    #funding-table tr:last-child td { border-bottom: none; }
+
     /* Chart */
     .chart-card { grid-column: 1 / 3; }
     .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -152,7 +179,8 @@
 
     @media (max-width: 800px) {
       main { grid-template-columns: 1fr; }
-      .bots-panel, .chart-card, .recommend-card, .backtest-card, .strategy-info { grid-column: 1; }
+      .bots-panel, .chart-card, .recommend-card, .backtest-card, .strategy-info,
+      .pnl-card, .heatmap-card, .funding-card { grid-column: 1; }
       .bots-panel { grid-row: auto; }
     }
   </style>
@@ -248,6 +276,20 @@
     <p id="no-bots-msg">실행 중인 봇이 없습니다. 코인을 추가하고 시작하세요.</p>
   </div>
 
+  <!-- ── PnL Summary ────────────────────────────────────────────────── -->
+  <div class="card pnl-card">
+    <div class="section-header"><h2>누적 손익 (실거래 기록)</h2></div>
+    <div class="pnl-stats">
+      <div class="pnl-stat"><span class="lbl">오늘</span><span class="val" id="pnl-today">—</span></div>
+      <div class="pnl-stat"><span class="lbl">이번주</span><span class="val" id="pnl-week">—</span></div>
+      <div class="pnl-stat"><span class="lbl">누적</span><span class="val" id="pnl-total">—</span></div>
+      <div class="pnl-stat"><span class="lbl">승률</span><span class="val" id="pnl-winrate">—</span></div>
+      <div class="pnl-stat"><span class="lbl">거래수</span><span class="val" id="pnl-trades">—</span></div>
+    </div>
+    <div id="equity-container" style="height:200px;margin-top:12px;"></div>
+    <p id="pnl-empty" style="display:none;color:var(--text-muted);font-size:12px;margin-top:8px;">아직 청산된 거래 기록이 없습니다. (LIVE 모드 거래 시 자동 기록됩니다)</p>
+  </div>
+
   <!-- ── Price Chart ────────────────────────────────────────────────── -->
   <div class="card chart-card">
     <div class="section-header">
@@ -256,8 +298,39 @@
       <button id="btn-show-trades" class="btn-small" style="background:var(--yellow);color:#0d1117;">거래 표시</button>
       <button id="btn-clear-trades" class="btn-small" style="background:var(--surface2);color:var(--text-muted);border:1px solid var(--border);">마커 지우기</button>
     </div>
+    <div class="indicator-toggles">
+      <label><input type="checkbox" id="ind-ema" /> EMA (20/50)</label>
+      <label><input type="checkbox" id="ind-bb" /> 볼린저밴드</label>
+      <label><input type="checkbox" id="ind-rsi" /> RSI</label>
+      <label><input type="checkbox" id="ind-macd" /> MACD</label>
+    </div>
     <div id="chart-container"></div>
+    <div id="rsi-container" style="height:120px;display:none;"></div>
+    <div id="macd-container" style="height:120px;display:none;"></div>
     <div id="avg-price-info">평균 진입가: <span id="avg-price-label" style="color:var(--yellow);font-weight:600;"></span></div>
+  </div>
+
+  <!-- ── Market Heatmap ─────────────────────────────────────────────── -->
+  <div class="card heatmap-card">
+    <div class="section-header">
+      <h2>마켓 히트맵 (24h)</h2>
+      <button id="btn-heatmap" class="btn-small" style="background:var(--accent);color:#0d1117;">새로고침</button>
+      <span id="heatmap-spinner" style="display:none;font-size:12px;color:var(--text-muted);">⏳ 로딩...</span>
+    </div>
+    <div id="heatmap-grid" class="heatmap-grid"></div>
+  </div>
+
+  <!-- ── Funding / Long-Short ───────────────────────────────────────── -->
+  <div class="card funding-card">
+    <div class="section-header">
+      <h2>펀딩비 &amp; 롱/숏 비율 (시장 심리)</h2>
+      <button id="btn-funding" class="btn-small" style="background:var(--accent);color:#0d1117;">새로고침</button>
+      <span id="funding-spinner" style="display:none;font-size:12px;color:var(--text-muted);">⏳ 로딩...</span>
+    </div>
+    <table id="funding-table">
+      <thead><tr><th>심볼</th><th>펀딩비</th><th>롱/숏 비율</th><th>심리</th></tr></thead>
+      <tbody id="funding-tbody"></tbody>
+    </table>
   </div>
 
   <!-- ── Coin Recommendation ────────────────────────────────────────── -->
@@ -342,6 +415,7 @@ function addSymbol() {
 function removeSymbol(s) {
   selectedSymbols = selectedSymbols.filter(x => x !== s);
   renderSymbolTags();
+  if (typeof saveSettings === "function") saveSettings();
 }
 
 $("symbol-input").addEventListener("keydown", e => { if (e.key === "Enter") addSymbol(); });
@@ -585,6 +659,88 @@ function initChart() {
   window.addEventListener("resize", () => { chartInstance.applyOptions({ width: container.clientWidth }); });
 }
 
+// ── Indicator overlay series ───────────────────────────────────────────────
+let indSeries = {};   // name → series object
+let rsiChart = null, rsiSeries = null, macdChart = null, macdHist = null, macdLine = null, macdSig = null;
+
+function ensureIndicatorSeries() {
+  if (!indSeries.ema20) {
+    indSeries.ema20 = chartInstance.addLineSeries({ color: "#58a6ff", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    indSeries.ema50 = chartInstance.addLineSeries({ color: "#d29922", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    indSeries.bb_up = chartInstance.addLineSeries({ color: "#8b949e", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    indSeries.bb_lo = chartInstance.addLineSeries({ color: "#8b949e", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    indSeries.bb_mid = chartInstance.addLineSeries({ color: "#6e7681", lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false });
+  }
+}
+
+async function updateIndicators() {
+  const wantEMA  = $("ind-ema").checked;
+  const wantBB   = $("ind-bb").checked;
+  const wantRSI  = $("ind-rsi").checked;
+  const wantMACD = $("ind-macd").checked;
+
+  if (!wantEMA && !wantBB && !wantRSI && !wantMACD) {
+    ensureIndicatorSeries();
+    Object.values(indSeries).forEach(s => s.setData([]));
+    $("rsi-container").style.display = "none";
+    $("macd-container").style.display = "none";
+    return;
+  }
+
+  try {
+    const r = await fetch(`/api/indicators?symbol=${encodeURIComponent(currentChartSymbol)}&interval=${encodeURIComponent(currentChartInterval)}&limit=200`);
+    if (!r.ok) return;
+    const d = await r.json();
+    ensureIndicatorSeries();
+
+    indSeries.ema20.setData(wantEMA ? (d.ema20||[]) : []);
+    indSeries.ema50.setData(wantEMA ? (d.ema50||[]) : []);
+    indSeries.bb_up.setData(wantBB ? (d.bb_upper||[]) : []);
+    indSeries.bb_lo.setData(wantBB ? (d.bb_lower||[]) : []);
+    indSeries.bb_mid.setData(wantBB ? (d.bb_mid||[]) : []);
+
+    // RSI subpane
+    if (wantRSI) {
+      $("rsi-container").style.display = "block";
+      if (!rsiChart) {
+        rsiChart = LightweightCharts.createChart($("rsi-container"), {
+          width: $("rsi-container").clientWidth, height: 120,
+          layout: { background: { color: "#0d1117" }, textColor: "#8b949e" },
+          grid: { vertLines: { color: "#161b22" }, horzLines: { color: "#161b22" } },
+          rightPriceScale: { borderColor: "#30363d" },
+          timeScale: { borderColor: "#30363d", timeVisible: true, secondsVisible: false },
+        });
+        rsiSeries = rsiChart.addLineSeries({ color: "#bc8cff", lineWidth: 1 });
+      }
+      rsiSeries.setData(d.rsi || []);
+      rsiChart.timeScale().fitContent();
+    } else { $("rsi-container").style.display = "none"; }
+
+    // MACD subpane
+    if (wantMACD) {
+      $("macd-container").style.display = "block";
+      if (!macdChart) {
+        macdChart = LightweightCharts.createChart($("macd-container"), {
+          width: $("macd-container").clientWidth, height: 120,
+          layout: { background: { color: "#0d1117" }, textColor: "#8b949e" },
+          grid: { vertLines: { color: "#161b22" }, horzLines: { color: "#161b22" } },
+          rightPriceScale: { borderColor: "#30363d" },
+          timeScale: { borderColor: "#30363d", timeVisible: true, secondsVisible: false },
+        });
+        macdHist = macdChart.addHistogramSeries({ color: "#3fb950" });
+        macdLine = macdChart.addLineSeries({ color: "#58a6ff", lineWidth: 1 });
+        macdSig  = macdChart.addLineSeries({ color: "#f85149", lineWidth: 1 });
+      }
+      macdHist.setData((d.macd_hist||[]).map(p => ({ time: p.time, value: p.value, color: p.value >= 0 ? "#3fb95088" : "#f8514988" })));
+      macdLine.setData(d.macd || []);
+      macdSig.setData(d.macd_signal || []);
+      macdChart.timeScale().fitContent();
+    } else { $("macd-container").style.display = "none"; }
+  } catch(_) {}
+}
+
+["ind-ema","ind-bb","ind-rsi","ind-macd"].forEach(id => $(id).addEventListener("change", updateIndicators));
+
 async function fetchAndRenderChart(symbol, interval) {
   symbol   = symbol   || currentChartSymbol;
   interval = interval || currentChartInterval;
@@ -597,6 +753,7 @@ async function fetchAndRenderChart(symbol, interval) {
     if (!Array.isArray(data) || data.length === 0) return;
     candleSeries.setData(data);
     chartInstance.timeScale().fitContent();
+    updateIndicators();
     const last = data[data.length - 1];
     $("chart-symbol").textContent = `${symbol} · ${interval} · ${last.close.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})} USDT`;
   } catch(_) {}
@@ -764,12 +921,139 @@ $("btn-backtest").addEventListener("click", async () => {
   $("btn-backtest").disabled = false;
 });
 
+// ── PnL & Equity Curve ─────────────────────────────────────────────────────
+let equityChart = null, equitySeries = null;
+function fmtPnl(v) { return (v >= 0 ? "+" : "") + v.toFixed(2); }
+function pnlColor(v) { return v > 0 ? "var(--green)" : v < 0 ? "var(--red)" : "var(--text)"; }
+
+async function refreshPnl() {
+  try {
+    const r = await fetch("/api/pnl");
+    const d = await r.json();
+    if (!d.ok) return;
+    const set = (id, v, suffix="") => {
+      const el = $(id);
+      el.textContent = (typeof v === "number" ? fmtPnl(v) : v) + suffix;
+      if (id !== "pnl-winrate" && id !== "pnl-trades") el.style.color = pnlColor(v);
+    };
+    set("pnl-today", d.today_pnl, " USDT");
+    set("pnl-week",  d.week_pnl,  " USDT");
+    set("pnl-total", d.total_pnl, " USDT");
+    $("pnl-winrate").textContent = d.win_rate + "%";
+    $("pnl-trades").textContent  = d.num_trades + "회";
+
+    if (!equityChart) {
+      equityChart = LightweightCharts.createChart($("equity-container"), {
+        width: $("equity-container").clientWidth, height: 200,
+        layout: { background: { color: "#0d1117" }, textColor: "#8b949e" },
+        grid: { vertLines: { color: "#161b22" }, horzLines: { color: "#161b22" } },
+        rightPriceScale: { borderColor: "#30363d" },
+        timeScale: { borderColor: "#30363d", timeVisible: true, secondsVisible: false },
+      });
+      equitySeries = equityChart.addAreaSeries({ lineColor: "#3fb950", topColor: "#3fb95044", bottomColor: "#3fb95000", lineWidth: 2 });
+      window.addEventListener("resize", () => equityChart.applyOptions({ width: $("equity-container").clientWidth }));
+    }
+    const ec = d.equity_curve || [];
+    equitySeries.setData(ec);
+    if (ec.length > 0) { equityChart.timeScale().fitContent(); $("pnl-empty").style.display = "none"; }
+    else { $("pnl-empty").style.display = "block"; }
+  } catch(_) {}
+}
+
+// ── Heatmap ─────────────────────────────────────────────────────────────────
+function heatColor(chg) {
+  // green for up, red for down, intensity by magnitude
+  const m = Math.min(Math.abs(chg) / 10, 1);
+  if (chg >= 0) return `rgba(63,185,80,${0.15 + m*0.55})`;
+  return `rgba(248,81,73,${0.15 + m*0.55})`;
+}
+async function refreshHeatmap() {
+  $("heatmap-spinner").style.display = "inline";
+  try {
+    const r = await fetch("/api/heatmap");
+    const d = await r.json();
+    if (d.ok) {
+      $("heatmap-grid").innerHTML = (d.coins||[]).map(c => `
+        <div class="heat-cell" style="background:${heatColor(c.change_24h)};" onclick="loadChartForBot('${c.symbol}', currentChartInterval)">
+          <div class="sym">${c.symbol.replace('_USDT','')}</div>
+          <div class="chg">${c.change_24h>=0?'+':''}${c.change_24h}%</div>
+          <div class="vol">변동성 ${c.volatility}%</div>
+        </div>`).join("");
+    }
+  } catch(_) {}
+  $("heatmap-spinner").style.display = "none";
+}
+$("btn-heatmap").addEventListener("click", refreshHeatmap);
+
+// ── Funding / Long-Short ────────────────────────────────────────────────────
+async function refreshFunding() {
+  $("funding-spinner").style.display = "inline";
+  try {
+    const r = await fetch("/api/funding");
+    const d = await r.json();
+    if (d.ok) {
+      $("funding-tbody").innerHTML = (d.coins||[]).map(c => {
+        const fr = c.funding_rate;
+        const lsr = c.long_short_ratio;
+        const frColor = fr == null ? "var(--text-muted)" : fr >= 0 ? "var(--green)" : "var(--red)";
+        let sentiment = "—", sColor = "var(--text-muted)";
+        if (lsr != null) {
+          if (lsr > 1.1) { sentiment = "롱 우세 📈"; sColor = "var(--green)"; }
+          else if (lsr < 0.9) { sentiment = "숏 우세 📉"; sColor = "var(--red)"; }
+          else { sentiment = "중립"; }
+        }
+        return `<tr>
+          <td style="font-weight:600;">${c.symbol}</td>
+          <td style="color:${frColor};">${fr==null?'—':(fr>=0?'+':'')+fr+'%'}</td>
+          <td>${lsr==null?'—':lsr}</td>
+          <td style="color:${sColor};font-weight:600;">${sentiment}</td>
+        </tr>`;
+      }).join("");
+    }
+  } catch(_) {}
+  $("funding-spinner").style.display = "none";
+}
+$("btn-funding").addEventListener("click", refreshFunding);
+
+// ── Settings save/load ──────────────────────────────────────────────────────
+async function saveSettings() {
+  const capMode = document.querySelector('input[name="capital-mode"]:checked');
+  const data = {
+    strategy: $("strategy").value, symbols: selectedSymbols, interval: $("interval").value,
+    leverage: $("leverage").value, dry_run: $("dry-run").checked,
+    capital_mode: capMode ? capMode.value : "percent", capital_value: $("capital-value").value,
+  };
+  try { await fetch("/api/settings", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(data) }); } catch(_) {}
+}
+async function loadSettings() {
+  try {
+    const r = await fetch("/api/settings");
+    const d = await r.json();
+    const s = d.settings || {};
+    if (s.strategy) $("strategy").value = s.strategy;
+    if (s.interval) $("interval").value = s.interval;
+    if (s.leverage) $("leverage").value = s.leverage;
+    if (typeof s.dry_run === "boolean") $("dry-run").checked = s.dry_run;
+    if (Array.isArray(s.symbols) && s.symbols.length) { selectedSymbols = s.symbols; renderSymbolTags(); }
+    if (s.capital_value) $("capital-value").value = s.capital_value;
+    if (s.capital_mode) document.querySelectorAll('input[name="capital-mode"]').forEach(r => r.checked = r.value === s.capital_mode);
+  } catch(_) {}
+}
+["strategy","interval","leverage","dry-run","capital-value"].forEach(id => $(id).addEventListener("change", saveSettings));
+
 // ── Init ─────────────────────────────────────────────────────────────────
+loadSettings();
 poll();
 setInterval(poll, 2000);
 initChart();
 fetchAndRenderChart("BTC_USDT", "5m");
 setInterval(() => fetchAndRenderChart(), 30000);
+refreshPnl();
+setInterval(refreshPnl, 15000);
+refreshHeatmap();
+setInterval(refreshHeatmap, 60000);
+refreshFunding();
+setInterval(refreshFunding, 60000);
 </script>
 </body>
 </html>
