@@ -251,52 +251,57 @@ class GateClient:
         )
         self.place_order(symbol, close_size, reduce_only=True)
 
-    def set_stop_loss(self, symbol: str, stop_price: float, size: int) -> None:
+    def _place_trigger_order(
+        self, symbol: str, trigger_price: float, contracts: int,
+        position_dir: int, rule: int, label: str,
+    ) -> None:
         """
-        Register a stop-loss price-triggered order on the exchange.
-        Survives bot crash / PC shutdown — the exchange executes it automatically.
+        Internal: register a reduce-only price-triggered market order.
 
-        Parameters
-        ----------
-        symbol     : e.g. "BTC_USDT"
-        stop_price : Trigger price for the stop order
-        size       : Contract count to close (positive value; direction set to reduce-only)
+        position_dir : 1 (long) or -1 (short) — the position being protected.
+        rule         : 1 = trigger when price >= trigger_price, 2 = when price <= trigger_price.
         """
         if self.dry_run:
             logger.info(
-                "[DRY RUN] set_stop_loss skipped",
-                extra={"symbol": symbol, "stop_price": stop_price, "size": size},
+                f"[DRY RUN] {label} skipped",
+                extra={"symbol": symbol, "trigger_price": trigger_price, "contracts": contracts},
             )
             return
         try:
-            # Gate.io price-triggered order (stop market)
+            close_size = -abs(contracts) if position_dir == 1 else abs(contracts)
             price_trigger = gate_api.FuturesPriceTrigger(
-                strategy_type=0,      # 0 = price triggered
-                price_type=0,         # 0 = last price
-                price=str(stop_price),
-                rule=2 if size < 0 else 1,  # 1=price>=trigger(short SL), 2=price<=trigger(long SL)
-                expiration=86400,     # 24h expiry
+                strategy_type=0, price_type=0,
+                price=str(trigger_price), rule=rule, expiration=86400,
             )
             initial_order = gate_api.FuturesInitialOrder(
-                contract=symbol,
-                size=-abs(size),      # close = opposite sign of position
-                price="0",            # market order
-                tif="ioc",
-                reduce_only=True,
+                contract=symbol, size=close_size, price="0", tif="ioc", reduce_only=True,
             )
-            trigger_order = gate_api.FuturesPriceTriggeredOrder(
-                initial=initial_order,
-                trigger=price_trigger,
-            )
+            trigger_order = gate_api.FuturesPriceTriggeredOrder(initial=initial_order, trigger=price_trigger)
             result = self._api.create_price_triggered_order(
                 settle=SETTLE, futures_price_triggered_order=trigger_order
             )
-            logger.info(
-                "Stop-loss order placed",
-                extra={"symbol": symbol, "stop_price": stop_price, "order_id": result.id},
-            )
+            logger.info(f"{label} order placed",
+                        extra={"symbol": symbol, "trigger_price": trigger_price, "order_id": result.id})
         except ApiException as exc:
-            logger.error("set_stop_loss failed", extra={"symbol": symbol, "error": str(exc)})
+            logger.error(f"{label} failed", extra={"symbol": symbol, "error": str(exc)})
+
+    def set_stop_loss(self, symbol: str, stop_price: float, contracts: int, position_dir: int = 1) -> None:
+        """
+        Register a stop-loss on the exchange. Survives bot/PC shutdown.
+        Long  → trigger when price drops to stop_price (rule 2).
+        Short → trigger when price rises to stop_price (rule 1).
+        """
+        rule = 2 if position_dir == 1 else 1
+        self._place_trigger_order(symbol, stop_price, contracts, position_dir, rule, "Stop-loss")
+
+    def set_take_profit(self, symbol: str, tp_price: float, contracts: int, position_dir: int = 1) -> None:
+        """
+        Register a take-profit on the exchange. Survives bot/PC shutdown.
+        Long  → trigger when price rises to tp_price (rule 1).
+        Short → trigger when price drops to tp_price (rule 2).
+        """
+        rule = 1 if position_dir == 1 else 2
+        self._place_trigger_order(symbol, tp_price, contracts, position_dir, rule, "Take-profit")
 
     def cancel_all_stop_orders(self, symbol: str) -> None:
         """Cancel all pending price-triggered (stop) orders for *symbol*."""

@@ -51,3 +51,18 @@ VOL_BREAKOUT_MAX_FUNDING: float = 0.001  # Max funding rate to allow entry (0.1%
 
 # --- Bot Loop ---
 LOOP_INTERVAL_SECONDS: int = 300  # Re-evaluate every 5 minutes
+
+# --- Take Profit / Stop Loss (registered on exchange) ---
+TAKE_PROFIT_PCT: float = 0.03      # Default TP distance (3% price move) — scaled by leverage
+STOP_LOSS_PCT: float = 0.015       # Default SL distance (1.5% price move) — scaled by leverage
+
+# --- Daily Loss Kill Switch ---
+DAILY_LOSS_LIMIT_PCT: float = 10.0  # Halt all trading if daily loss exceeds this % of start-of-day balance
+
+# --- Telegram Notifications (optional) ---
+TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# --- Trade History ---
+TRADE_LOG_FILE: str = os.getenv("TRADE_LOG_FILE", "trade_history.csv")
+

@@ -48,6 +48,8 @@ from strategies.tsmom import TSMOMStrategy
 from strategies.vol_breakout import VolBreakoutStrategy
 from strategies.vwap_reversion import VWAPReversionStrategy
 from utils.logger import get_logger
+from utils.telegram import Notifier
+from utils.trade_log import record_trade
 
 # Honor settings passed from the web dashboard (env vars override config defaults).
 _dry_run_env = os.getenv("DRY_RUN")
@@ -208,6 +210,15 @@ def run(args: argparse.Namespace) -> None:
     last_entry_price: float = 0.0
     last_contracts: int = 0
 
+    # Telegram notifier (no-ops if not configured)
+    notifier = Notifier(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID)
+
+    # Daily loss kill-switch tracking
+    import datetime as _dt
+    day_start_balance = peak_balance
+    current_day = _dt.date.today()
+    kill_switch_active = False
+
     logger.info(
         "Bot started",
         extra={
@@ -217,6 +228,11 @@ def run(args: argparse.Namespace) -> None:
             "dry_run": config.DRY_RUN,
             "initial_balance": peak_balance,
         },
+    )
+    notifier._send(
+        f"🤖 <b>봇 시작</b>\n심볼: {args.symbol}\n전략: {args.strategy}\n"
+        f"레버리지: {config.LEVERAGE}x\n모드: {'DRY RUN' if config.DRY_RUN else 'LIVE'}\n"
+        f"잔고: ${peak_balance:,.2f}"
     )
 
     while True:
@@ -229,6 +245,31 @@ def run(args: argparse.Namespace) -> None:
                 continue
             if balance > peak_balance:
                 peak_balance = balance
+
+            # ── Daily loss kill-switch ───────────────────────────────────
+            today = _dt.date.today()
+            if today != current_day:
+                # New day — reset the daily baseline and re-enable trading.
+                current_day = today
+                day_start_balance = balance
+                kill_switch_active = False
+                logger.info("New trading day — daily loss limit reset", extra={"day_start_balance": balance})
+
+            if day_start_balance > 0:
+                daily_loss_pct = (day_start_balance - balance) / day_start_balance * 100
+                if daily_loss_pct >= config.DAILY_LOSS_LIMIT_PCT and not kill_switch_active:
+                    kill_switch_active = True
+                    logger.warning("DAILY LOSS LIMIT hit — halting trading for today",
+                                   extra={"daily_loss_pct": daily_loss_pct})
+                    if current_position != 0:
+                        client.cancel_all_stop_orders(args.symbol)
+                        client.close_position(args.symbol)
+                        current_position = 0
+                    notifier.kill_switch(args.symbol, daily_loss_pct)
+
+            if kill_switch_active:
+                time.sleep(config.LOOP_INTERVAL_SECONDS)
+                continue
 
             if check_drawdown(peak_balance, balance, config.KELLY_MAX_DRAWDOWN_PCT):
                 logger.warning("Drawdown limit hit — closing position and sleeping")
@@ -283,6 +324,13 @@ def run(args: argparse.Namespace) -> None:
                 logger.info("Exit condition met — closing position")
                 client.cancel_all_stop_orders(args.symbol)
                 client.close_position(args.symbol)
+                exit_pnl = current_position * (last_price - last_entry_price) * last_contracts * multiplier
+                notifier.exit(args.symbol, "전략 청산", last_price, exit_pnl)
+                record_trade(
+                    config.TRADE_LOG_FILE, args.symbol, args.strategy, "exit",
+                    "long" if current_position == 1 else "short",
+                    last_price, last_contracts, 0.0, exit_pnl, balance,
+                )
                 current_position = 0
                 last_entry_price = 0.0
                 last_contracts = 0
@@ -341,24 +389,39 @@ def run(args: argparse.Namespace) -> None:
                 current_position = signal
                 last_entry_price = last_price
                 last_contracts = n_contracts
+                notional = size_usdt * config.LEVERAGE
 
-                # 거래소에 Stop-Loss 등록 (봇/PC 종료 시에도 자동 청산)
-                # SL = 진입가에서 ATR 1.5배 또는 레버리지 역수의 60% 거리
-                sl_distance_pct = min(0.015, 0.6 / config.LEVERAGE)
+                # 거래소에 Stop-Loss / Take-Profit 등록 (봇/PC 종료 시에도 자동 실행)
+                sl_distance_pct = min(config.STOP_LOSS_PCT, 0.6 / config.LEVERAGE)
+                tp_distance_pct = min(config.TAKE_PROFIT_PCT, 1.2 / config.LEVERAGE)
                 if signal == 1:   # 롱
                     sl_price = round(last_price * (1 - sl_distance_pct), 2)
+                    tp_price = round(last_price * (1 + tp_distance_pct), 2)
                 else:             # 숏
                     sl_price = round(last_price * (1 + sl_distance_pct), 2)
-                client.set_stop_loss(args.symbol, sl_price, n_contracts)
+                    tp_price = round(last_price * (1 - tp_distance_pct), 2)
+                client.set_stop_loss(args.symbol, sl_price, n_contracts, signal)
+                client.set_take_profit(args.symbol, tp_price, n_contracts, signal)
                 logger.info(
-                    "Stop-loss registered on exchange",
-                    extra={"sl_price": sl_price, "distance_pct": sl_distance_pct * 100},
+                    "SL/TP registered on exchange",
+                    extra={"sl_price": sl_price, "tp_price": tp_price},
+                )
+
+                # 알림 + 거래 기록
+                notifier.entry(args.symbol, "long" if signal == 1 else "short",
+                               last_price, n_contracts, notional)
+                record_trade(
+                    config.TRADE_LOG_FILE, args.symbol, args.strategy, "entry",
+                    "long" if signal == 1 else "short",
+                    last_price, n_contracts, notional, 0.0, balance,
                 )
 
         except KeyboardInterrupt:
             logger.info("Shutdown requested — closing position")
             if current_position != 0:
+                client.cancel_all_stop_orders(args.symbol)
                 client.close_position(args.symbol)
+                notifier.exit(args.symbol, "수동 정지", last_entry_price)
             sys.exit(0)
         except Exception as exc:  # noqa: BLE001
             logger.error("Unexpected error in main loop", extra={"error": str(exc)})
