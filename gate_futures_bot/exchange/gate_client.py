@@ -167,9 +167,14 @@ class GateClient:
         """
         try:
             pos = self._api.get_position(settle=SETTLE, contract=symbol)
+            def _f(v):
+                try:
+                    return float(v) if v is not None else 0.0
+                except (TypeError, ValueError):
+                    return 0.0
             return {
-                "size": float(pos.size),
-                "entry_price": float(pos.entry_price),
+                "size": _f(pos.size),
+                "entry_price": _f(pos.entry_price),
             }
         except ApiException as exc:
             logger.error("get_position failed", extra={"symbol": symbol, "error": str(exc)})
