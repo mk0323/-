@@ -72,8 +72,13 @@ class IchimokuStrategy(BaseStrategy):
         if current_position == 0 or len(df) < 80:
             return False
         tenkan, kijun, _, _ = _ichimoku(df)
-        t = float(tenkan.iloc[-1])
-        k = float(kijun.iloc[-1])
+        try:
+            t = float(tenkan.iloc[-1])
+            k = float(kijun.iloc[-1])
+            if np.isnan(t) or np.isnan(k):
+                return False
+        except (TypeError, ValueError):
+            return False
         if current_position == 1 and t < k:
             return True
         if current_position == -1 and t > k:

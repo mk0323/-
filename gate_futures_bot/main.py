@@ -306,7 +306,7 @@ def run(args: argparse.Namespace) -> None:
                 continue
 
             # ── 4. Compute signal ────────────────────────────────────────
-            signal = strategy.compute_signal(df)
+            signal = strategy.safe_compute_signal(df)
             last_price = float(df["close"].iloc[-1])
 
             logger.info(
@@ -320,7 +320,7 @@ def run(args: argparse.Namespace) -> None:
             )
 
             # ── 5. Exit logic ────────────────────────────────────────────
-            if current_position != 0 and strategy.should_exit(df, current_position):
+            if current_position != 0 and strategy.safe_should_exit(df, current_position):
                 logger.info("Exit condition met — closing position")
                 client.cancel_all_stop_orders(args.symbol)
                 client.close_position(args.symbol)
@@ -424,7 +424,8 @@ def run(args: argparse.Namespace) -> None:
                 notifier.exit(args.symbol, "수동 정지", last_entry_price)
             sys.exit(0)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Unexpected error in main loop", extra={"error": str(exc)})
+            import traceback
+            logger.error("Unexpected error in main loop", extra={"error": str(exc), "traceback": traceback.format_exc()})
 
         time.sleep(config.LOOP_INTERVAL_SECONDS)
 
