@@ -1,415 +1,861 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gate.io 선물 자동매매 봇</title>
+  <title>Gate.io Futures Bot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
-      --border: #30363d; --text: #c9d1d9; --text-muted: #8b949e;
-      --accent: #58a6ff; --green: #3fb950; --red: #f85149;
-      --yellow: #d29922; --radius: 8px; --gap: 16px;
+      --bg:         #050507;
+      --surface:    #0c0c10;
+      --surface2:   #111116;
+      --surface3:   #16161d;
+      --border:     #1c1c24;
+      --border2:    #242430;
+      --text:       #e2e2ea;
+      --text-muted: #5a5a70;
+      --text-dim:   #3a3a50;
+      --accent:     #f7931a;
+      --accent2:    #00d4a0;
+      --green:      #00e676;
+      --red:        #ff1744;
+      --yellow:     #ffd600;
+      --blue:       #448aff;
+      --purple:     #b388ff;
+      --mono:       "IBM Plex Mono", "Courier New", monospace;
+      --sans:       "Inter", -apple-system, sans-serif;
+      --h-header:   40px;
+      --h-tabs:     240px;
+      --w-left:     240px;
+      --w-right:    280px;
     }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.5; }
-    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    header h1 { font-size: 18px; font-weight: 600; }
-    #balance-header { margin-left: auto; font-size: 13px; color: var(--text-muted); }
-    #balance-header span { color: var(--green); font-weight: 700; font-size: 15px; }
 
-    main { max-width: 1300px; margin: 0 auto; padding: 24px var(--gap); display: grid; grid-template-columns: 360px 1fr; gap: var(--gap); }
-
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
-    .card h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 14px; }
-
-    /* Control Panel */
-    .control-panel { grid-column: 1; grid-row: 1; }
-    .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
-    .form-group select, .form-group input[type="text"], .form-group input[type="number"] {
-      width: 100%; background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 6px; color: var(--text); padding: 7px 10px; font-size: 13px; outline: none; transition: border-color .15s;
+    html, body {
+      height: 100%; width: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.4;
     }
-    .form-group select:focus, .form-group input:focus { border-color: var(--accent); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* ── HEADER ──────────────────────────────────────────────────────────── */
+    #header {
+      height: var(--h-header);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    #logo {
+      padding: 0 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: .08em;
+      white-space: nowrap;
+      border-right: 1px solid var(--border);
+      height: 100%;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #logo .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:.4; } }
+
+    #ticker-strip {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      height: 100%;
+      overflow: hidden;
+      gap: 0;
+    }
+    .ticker-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 14px;
+      height: 100%;
+      border-right: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 11px;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .ticker-item:hover { background: var(--surface2); }
+    .ticker-item .sym { color: var(--text-muted); font-weight: 500; }
+    .ticker-item .price { color: var(--text); font-weight: 600; }
+    .ticker-item .chg { font-size: 10px; }
+    .chg.up { color: var(--green); }
+    .chg.dn { color: var(--red); }
+
+    #header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+      border-left: 1px solid var(--border);
+      height: 100%;
+      white-space: nowrap;
+    }
+    #header-right .bal-label { color: var(--text-muted); }
+    #balance-val { color: var(--accent2); font-weight: 600; font-size: 12px; }
+    #clock { color: var(--text-muted); }
+
+    /* ── BODY ────────────────────────────────────────────────────────────── */
+    #body {
+      display: flex;
+      flex-direction: row;
+      height: calc(100vh - var(--h-header) - var(--h-tabs));
+      overflow: hidden;
+    }
+
+    /* ── LEFT PANEL ──────────────────────────────────────────────────────── */
+    #left-panel {
+      width: var(--w-left);
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .lpanel-section {
+      border-bottom: 1px solid var(--border);
+      padding: 10px;
+    }
+    .lpanel-title {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .form-row { margin-bottom: 7px; }
+    .form-row label { display: block; font-family: var(--mono); font-size: 9px; color: var(--text-muted); margin-bottom: 3px; letter-spacing: .06em; }
+    .form-row select, .form-row input[type="text"], .form-row input[type="number"] {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 3px;
+      color: var(--text);
+      padding: 5px 7px;
+      font-family: var(--mono);
+      font-size: 11px;
+      outline: none;
+    }
+    .form-row select:focus, .form-row input:focus { border-color: var(--accent); }
+    .form-row select option { background: var(--surface2); }
+
+    .toggle-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; font-size: 11px; }
+    .toggle-row input[type="checkbox"] { width: 12px; height: 12px; accent-color: var(--accent); cursor: pointer; }
+
+    .btn-row { display: flex; gap: 5px; margin-top: 8px; }
+    .btn-primary {
+      flex: 1; padding: 7px 0; border: none; border-radius: 3px;
+      font-family: var(--mono); font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+      background: var(--accent); color: #050507;
+    }
+    .btn-danger {
+      flex: 1; padding: 7px 0; border: none; border-radius: 3px;
+      font-family: var(--mono); font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+      background: var(--red); color: #fff;
+    }
+    .btn-primary:hover:not(:disabled), .btn-danger:hover:not(:disabled) { opacity: .8; }
+    .btn-primary:disabled, .btn-danger:disabled { opacity: .4; cursor: not-allowed; }
 
     /* Symbol tags */
-    #symbol-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    #symbol-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
     .symbol-tag {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 20px; padding: 3px 10px; font-size: 12px; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 3px;
+      background: var(--surface3); border: 1px solid var(--border2);
+      border-radius: 2px; padding: 2px 6px;
+      font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--accent);
     }
-    .symbol-tag .remove { cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; }
+    .symbol-tag .remove { cursor: pointer; color: var(--text-dim); font-size: 12px; }
     .symbol-tag .remove:hover { color: var(--red); }
-    .symbol-add-row { display: flex; gap: 6px; margin-top: 6px; }
-    .symbol-add-row input { flex: 1; }
-    .btn-add-symbol {
-      padding: 7px 12px; background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 6px; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    .sym-add-row { display: flex; gap: 4px; }
+    .sym-add-row input { flex: 1; }
+    .btn-add-sym {
+      padding: 5px 8px; background: var(--surface3); border: 1px solid var(--border2);
+      border-radius: 3px; color: var(--accent2); font-family: var(--mono); font-size: 10px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
     }
-    .btn-add-symbol:hover { border-color: var(--accent); }
-
-    .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; }
-    .toggle-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
-    .btn-row { display: flex; gap: 8px; margin-top: 16px; }
-    button { flex: 1; padding: 9px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
-    button:disabled { opacity: .4; cursor: not-allowed; }
-    #btn-start { background: var(--green); color: #0d1117; }
-    #btn-stop-all { background: var(--red); color: #fff; }
-    #btn-start:hover:not(:disabled), #btn-stop-all:hover:not(:disabled) { opacity: .85; }
+    .btn-add-sym:hover { border-color: var(--accent2); }
 
     /* Capital */
-    .capital-section { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
-    .capital-section h3 { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-    .radio-row { display: flex; gap: 16px; margin-bottom: 10px; font-size: 13px; }
-    .radio-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+    .radio-row { display: flex; gap: 10px; margin-bottom: 6px; font-size: 10px; font-family: var(--mono); }
+    .radio-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-muted); }
     .radio-row input[type="radio"] { accent-color: var(--accent); }
-    .capital-input-row { display: flex; align-items: center; gap: 8px; }
-    .capital-input-row input[type="number"] { width: 100px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 6px 10px; font-size: 13px; outline: none; }
-    .capital-input-row input:focus { border-color: var(--accent); }
-    #capital-approx { font-size: 12px; color: var(--text-muted); }
 
-    /* Active bots panel */
-    .bots-panel { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: var(--gap); }
-
-    /* Bot card */
-    .bot-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;
+    /* Active bots list */
+    .bot-mini-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 7px;
+      margin-bottom: 5px;
     }
-    .bot-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
-    .bot-card-header h3 { font-size: 14px; font-weight: 700; color: var(--accent); flex: 1; }
-    .bot-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-    .bot-badge.running { background: rgba(63,185,80,.15); border: 1px solid var(--green); color: var(--green); }
-    .bot-badge.stopped { background: rgba(248,81,73,.15); border: 1px solid var(--red); color: var(--red); }
-    .bot-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-    .bot-meta { display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; margin-bottom: 8px; }
-    .bot-meta span b { color: var(--text); }
-    .bot-log {
-      background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
-      padding: 8px 10px; height: 120px; overflow-y: auto;
-      font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; line-height: 1.6;
+    .bot-mini-header { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+    .bot-mini-sym { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent); flex: 1; }
+    .running-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+      box-shadow: 0 0 5px var(--green); animation: pulse 1.5s infinite;
     }
-    .bot-actions { display: flex; gap: 8px; margin-top: 8px; }
-    .btn-bot-stop { flex: none; padding: 5px 14px; background: var(--red); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .btn-bot-stop:hover { opacity: .85; }
-    .btn-bot-chart { flex: none; padding: 5px 14px; background: var(--surface2); color: var(--accent); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .btn-bot-chart:hover { border-color: var(--accent); }
+    .bot-mini-meta { font-family: var(--mono); font-size: 9px; color: var(--text-muted); margin-bottom: 4px; }
+    .bot-mini-pos {
+      font-family: var(--mono); font-size: 10px; font-weight: 600; margin-bottom: 4px;
+    }
+    .bot-mini-log {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 2px; height: 48px; overflow-y: auto;
+      font-family: var(--mono); font-size: 9px; color: var(--text-muted);
+      padding: 3px 5px; margin-bottom: 4px;
+    }
+    .bot-mini-actions { display: flex; gap: 4px; }
+    .btn-mini-stop {
+      padding: 3px 8px; background: var(--red); color: #fff; border: none;
+      border-radius: 2px; font-family: var(--mono); font-size: 9px; font-weight: 600; cursor: pointer;
+    }
+    .btn-mini-chart {
+      padding: 3px 8px; background: var(--surface3); color: var(--blue);
+      border: 1px solid var(--border); border-radius: 2px;
+      font-family: var(--mono); font-size: 9px; font-weight: 600; cursor: pointer;
+    }
+    .btn-mini-stop:hover { opacity: .8; }
+    .btn-mini-chart:hover { border-color: var(--blue); }
+    #no-bots-msg { color: var(--text-dim); font-family: var(--mono); font-size: 10px; padding: 8px 0; text-align: center; }
 
-    /* Position status block */
-    .pos-block { margin: 8px 0; }
-    .pos-status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 6px; }
-    .pos-details { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); padding: 4px 0; }
-    .pos-details span b { color: var(--text); }
+    /* ── CHART AREA ──────────────────────────────────────────────────────── */
+    #chart-area {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    #chart-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      height: 36px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      overflow: hidden;
+    }
+    #chart-sym { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text); }
+    #chart-price { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--accent2); }
+    #chart-change { font-family: var(--mono); font-size: 10px; }
+
+    .sep { color: var(--border2); margin: 0 2px; }
+
+    .interval-btns { display: flex; gap: 2px; margin-left: 4px; }
+    .itvl-btn {
+      padding: 2px 7px; background: transparent; border: 1px solid var(--border);
+      border-radius: 2px; color: var(--text-muted); font-family: var(--mono); font-size: 10px;
+      cursor: pointer; transition: all .1s;
+    }
+    .itvl-btn.active { background: var(--accent); color: #050507; border-color: var(--accent); }
+    .itvl-btn:hover:not(.active) { border-color: var(--text-muted); color: var(--text); }
+
+    .ind-toggles { display: flex; gap: 4px; margin-left: auto; }
+    .ind-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 7px; border-radius: 10px;
+      border: 1px solid var(--border); background: transparent;
+      font-family: var(--mono); font-size: 9px; color: var(--text-muted);
+      cursor: pointer; transition: all .1s; white-space: nowrap;
+    }
+    .ind-pill .cdot { width: 5px; height: 5px; border-radius: 50%; }
+    .ind-pill.active { border-color: currentColor; }
+    .ind-pill[data-ind="ema"].active { color: var(--accent); background: rgba(247,147,26,.1); }
+    .ind-pill[data-ind="bb"].active  { color: var(--text-muted); background: rgba(90,90,112,.15); }
+    .ind-pill[data-ind="rsi"].active { color: var(--purple); background: rgba(179,136,255,.1); }
+    .ind-pill[data-ind="macd"].active{ color: var(--blue); background: rgba(68,138,255,.1); }
+
+    #chart-panes {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    #chart-container { flex: 1; min-height: 0; }
+    #rsi-container   { height: 90px; display: none; border-top: 1px solid var(--border); }
+    #macd-container  { height: 90px; display: none; border-top: 1px solid var(--border); }
+
+    /* Trade markers info */
+    #avg-price-info {
+      padding: 2px 10px; font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+      display: none; border-top: 1px solid var(--border); flex-shrink: 0;
+    }
+
+    /* Chart action btns */
+    #chart-actions {
+      display: flex; gap: 5px; align-items: center; padding: 4px 10px;
+      border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
+    }
+    .chart-act-btn {
+      padding: 3px 10px; border: 1px solid var(--border); border-radius: 2px;
+      background: var(--surface2); color: var(--text-muted); font-family: var(--mono);
+      font-size: 10px; cursor: pointer;
+    }
+    .chart-act-btn:hover { border-color: var(--text-muted); color: var(--text); }
+
+    /* ── RIGHT PANEL ─────────────────────────────────────────────────────── */
+    #right-panel {
+      width: var(--w-right);
+      flex-shrink: 0;
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .rpanel-section {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-bottom: 1px solid var(--border);
+    }
+    .rpanel-section:last-child { border-bottom: none; flex: 1; }
+    .rpanel-title {
+      flex-shrink: 0;
+      padding: 6px 10px;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    #positions-list { flex: 1; overflow-y: auto; padding: 6px; }
+    #news-list      { flex: 1; overflow-y: auto; }
+
+    /* Position cards */
+    .pos-card {
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 7px 8px;
+      margin-bottom: 5px;
+      background: var(--surface2);
+    }
+    .pos-card.holding-long  { border-left: 3px solid var(--green); }
+    .pos-card.holding-short { border-left: 3px solid var(--red); }
+    .pos-card.watching      { opacity: .5; }
+    .pos-card-sym { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent); margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+    .pos-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; font-family: var(--mono); font-size: 9px; color: var(--text-muted); }
+    .pos-card-grid span b { color: var(--text); font-weight: 500; }
+    #no-positions { color: var(--text-dim); font-family: var(--mono); font-size: 10px; padding: 10px; text-align: center; }
+
+    /* News */
+    .news-item {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background .1s;
+      text-decoration: none;
+    }
+    .news-item:hover { background: var(--surface2); }
+    .news-title { font-size: 11px; color: var(--text); line-height: 1.3; }
+    .news-time  { font-family: var(--mono); font-size: 9px; color: var(--text-dim); }
+    #news-loading { color: var(--text-dim); font-family: var(--mono); font-size: 10px; padding: 10px; text-align: center; }
+
+    /* ── BOTTOM TABS ─────────────────────────────────────────────────────── */
+    #bottom-tabs {
+      height: var(--h-tabs);
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #tab-bar {
+      display: flex;
+      align-items: center;
+      height: 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 0 14px;
+      height: 100%;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .06em;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color .1s, border-color .1s;
+      flex-shrink: 0;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+
+    #tab-content { flex: 1; overflow: hidden; }
+    .tab-pane { display: none; height: 100%; overflow-y: auto; padding: 8px 12px; }
+    .tab-pane.active { display: block; }
+
+    /* Heatmap */
+    #heatmap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 4px; }
+    .heat-cell {
+      border-radius: 3px; padding: 7px 5px; text-align: center;
+      border: 1px solid transparent; cursor: pointer; transition: opacity .1s;
+    }
+    .heat-cell:hover { opacity: .8; }
+    .heat-cell .h-sym { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--text); }
+    .heat-cell .h-chg { font-family: var(--mono); font-size: 12px; font-weight: 700; margin: 2px 0; }
+    .heat-cell .h-vol { font-family: var(--mono); font-size: 8px; color: rgba(226,226,234,.6); }
+
+    /* Tables */
+    .data-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+    .data-table th { text-align: left; color: var(--text-muted); font-weight: 500; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 9px; letter-spacing: .06em; }
+    .data-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: var(--surface2); }
+
+    /* Backtest recommended row */
+    .bt-row-rec td { color: var(--green); font-weight: 600; }
+    .bt-row-rec { background: rgba(0,230,118,.04); }
+
+    /* Strategy cards */
+    .strategy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 6px; }
+    .strategy-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 9px; }
+    .strategy-card h3 { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+    .strategy-card p  { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+    .strategy-card .ref { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin-top: 4px; }
+
+    /* PnL stats */
+    .pnl-stats { display: flex; gap: 6px; margin-bottom: 8px; }
+    .pnl-stat { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 7px; text-align: center; }
+    .pnl-stat .lbl { font-family: var(--mono); font-size: 9px; color: var(--text-muted); display: block; margin-bottom: 3px; }
+    .pnl-stat .val { font-family: var(--mono); font-size: 14px; font-weight: 700; display: block; }
+
+    /* Scan/backtest buttons */
+    .tab-action-row { display: flex; gap: 8px; align-items: center; margin-bottom: 7px; }
+    .btn-tab-action {
+      padding: 5px 14px; background: var(--accent); color: #050507;
+      border: none; border-radius: 3px; font-family: var(--mono); font-size: 10px;
+      font-weight: 700; cursor: pointer;
+    }
+    .btn-tab-action:hover { opacity: .85; }
+    .btn-tab-action:disabled { opacity: .4; cursor: not-allowed; }
+    .spinner-txt { font-family: var(--mono); font-size: 10px; color: var(--text-muted); display: none; }
+    .error-txt   { font-family: var(--mono); font-size: 10px; color: var(--red); display: none; }
+
+    /* Rec badge */
+    .rec-badge { display: inline-block; background: var(--green); color: #050507; font-family: var(--mono); font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+    .rec-apply { padding: 2px 7px; font-family: var(--mono); font-size: 9px; background: var(--accent); color: #050507; border: none; border-radius: 2px; cursor: pointer; font-weight: 700; }
+    .rec-add   { padding: 2px 7px; font-family: var(--mono); font-size: 9px; background: var(--green); color: #050507; border: none; border-radius: 2px; cursor: pointer; font-weight: 700; margin-left: 3px; }
+    .rec-apply:hover, .rec-add:hover { opacity: .85; }
+
+    /* Floating position card */
+    #float-pos {
+      position: fixed;
+      top: calc(var(--h-header) + 8px);
+      right: calc(var(--w-right) + 8px);
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      padding: 8px 10px;
+      min-width: 180px;
+      z-index: 100;
+      display: none;
+      animation: slideIn .2s ease-out;
+      box-shadow: 0 4px 20px rgba(0,0,0,.6);
+    }
+    @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    #float-pos .fp-title { font-family: var(--mono); font-size: 9px; color: var(--text-dim); letter-spacing: .1em; margin-bottom: 5px; }
+    .fp-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-family: var(--mono); font-size: 10px; }
+    .fp-item .fp-sym { color: var(--text-muted); }
+    .fp-item .fp-dir { font-size: 9px; }
+    .fp-item .fp-pnl { margin-left: auto; font-weight: 600; }
+
+    /* Log lines */
     .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-line.warn  { color: var(--yellow); }
     .log-line.error { color: var(--red); }
     .log-line.web   { color: var(--accent); font-style: italic; }
 
-    #no-bots-msg { color: var(--text-muted); font-size: 13px; padding: 20px; text-align: center; }
-
-    /* PnL */
-    .pnl-card { grid-column: 1 / 3; }
-    .pnl-stats { display: flex; gap: 12px; flex-wrap: wrap; }
-    .pnl-stat { flex: 1; min-width: 110px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; text-align: center; }
-    .pnl-stat .lbl { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
-    .pnl-stat .val { display: block; font-size: 18px; font-weight: 700; }
-
-    /* Indicator toggles */
-    .indicator-toggles { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; color: var(--text-muted); }
-    .indicator-toggles label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
-    .indicator-toggles input { accent-color: var(--accent); }
-
-    /* Heatmap */
-    .heatmap-card { grid-column: 1 / 3; }
-    .heatmap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
-    .heat-cell { border-radius: 6px; padding: 10px; text-align: center; border: 1px solid var(--border); }
-    .heat-cell .sym { font-size: 12px; font-weight: 700; }
-    .heat-cell .chg { font-size: 16px; font-weight: 700; margin: 4px 0; }
-    .heat-cell .vol { font-size: 10px; opacity: .8; }
-
-    /* Funding */
-    .funding-card { grid-column: 1 / 3; }
-    #funding-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    #funding-table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
-    #funding-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
-    #funding-table tr:last-child td { border-bottom: none; }
-
-    /* Chart */
-    .chart-card { grid-column: 1 / 3; }
-    .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-    .section-header h2 { margin-bottom: 0; }
-    .btn-small { flex: none; padding: 6px 14px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .btn-small:hover:not(:disabled) { opacity: .85; }
-    .btn-small:disabled { opacity: .4; cursor: not-allowed; }
-    #chart-container { height: 400px; width: 100%; }
-    #avg-price-info { margin-top: 8px; font-size: 12px; color: var(--text-muted); display: none; }
-
-    /* Recommendation */
-    .recommend-card { grid-column: 1 / 3; }
-    #recommend-table { width: 100%; border-collapse: collapse; font-size: 13px; display: none; }
-    #recommend-table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
-    #recommend-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
-    #recommend-table tr:last-child td { border-bottom: none; }
-    .rec-rank-1 { background: rgba(88,166,255,.08); }
-    .rec-apply-btn { padding: 4px 10px; font-size: 12px; background: var(--accent); color: #0d1117; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
-    .rec-apply-btn:hover { opacity: .85; }
-    .rec-add-btn { padding: 4px 10px; font-size: 12px; background: var(--green); color: #0d1117; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; margin-left: 4px; }
-    .rec-add-btn:hover { opacity: .85; }
-
-    /* Backtest */
-    .backtest-card { grid-column: 1 / 3; }
-    #backtest-table { width: 100%; border-collapse: collapse; font-size: 13px; display: none; }
-    #backtest-table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
-    #backtest-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
-    #backtest-table tr:last-child td { border-bottom: none; }
-    .bt-row-recommended { background: rgba(63,185,80,.1); }
-    .bt-row-recommended td { color: var(--green); font-weight: 600; }
-    .recommended-badge { display: inline-block; background: var(--green); color: #0d1117; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-    #backtest-spinner, #recommend-spinner { display: none; font-size: 12px; color: var(--text-muted); }
-
-    /* Strategy info */
-    .strategy-info { grid-column: 1 / 3; }
-    .strategy-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--gap); }
-    .strategy-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
-    .strategy-card h3 { font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
-    .strategy-card p { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
-    .strategy-card .ref { font-size: 11px; color: #484f58; margin-top: 6px; }
-
-    @media (max-width: 800px) {
-      main { grid-template-columns: 1fr; }
-      .bots-panel, .chart-card, .recommend-card, .backtest-card, .strategy-info,
-      .pnl-card, .heatmap-card, .funding-card { grid-column: 1; }
-      .bots-panel { grid-row: auto; }
-    }
+    #equity-container { height: 100px; margin-top: 6px; }
   </style>
 </head>
 <body>
 
-<header>
-  <h1>Gate.io 선물 자동매매 봇</h1>
-  <div id="balance-header">잔고: <span id="balance-val">—</span> USDT</div>
-</header>
+<!-- ── HEADER ──────────────────────────────────────────────────────────────── -->
+<div id="header">
+  <div id="logo">
+    <span class="dot"></span>GATE.IO FUTURES BOT
+  </div>
+  <div id="ticker-strip">
+    <!-- populated by JS -->
+  </div>
+  <div id="header-right">
+    <span class="bal-label">BAL</span>
+    <span id="balance-val">—</span>
+    <span>USDT</span>
+    <span id="clock">—</span>
+  </div>
+</div>
 
-<main>
-  <!-- ── Control Panel ──────────────────────────────────────────────── -->
-  <div class="card control-panel">
-    <h2>봇 설정</h2>
+<!-- ── BODY ────────────────────────────────────────────────────────────────── -->
+<div id="body">
 
-    <div class="form-group">
-      <label>전략 선택</label>
-      <select id="strategy">
-        <optgroup label="트렌드 추종">
-          <option value="TSMOM">TSMOM (시계열 모멘텀)</option>
-          <option value="DualMA">Dual MA (이중 이동평균)</option>
-          <option value="ema_ribbon">EMA 리본</option>
-          <option value="supertrend">Supertrend</option>
-          <option value="ichimoku">이치모쿠 클라우드</option>
-        </optgroup>
-        <optgroup label="평균 회귀">
-          <option value="BBandsRSI">BBands+RSI</option>
-          <option value="vwap_reversion">VWAP 평균 회귀</option>
-          <option value="rsi_divergence">RSI 다이버전스</option>
-        </optgroup>
-        <optgroup label="돌파">
-          <option value="vol_breakout">변동성 돌파 🔥</option>
-        </optgroup>
-        <optgroup label="분할 매수 (DCA)">
-          <option value="dca_momentum">DCA 모멘텀</option>
-        </optgroup>
-      </select>
+  <!-- LEFT PANEL -->
+  <div id="left-panel">
+    <!-- Settings -->
+    <div class="lpanel-section">
+      <div class="lpanel-title">Configuration</div>
+
+      <div class="form-row">
+        <label>Strategy</label>
+        <select id="strategy">
+          <optgroup label="Trend Following">
+            <option value="TSMOM">TSMOM</option>
+            <option value="DualMA">Dual MA</option>
+            <option value="ema_ribbon">EMA Ribbon</option>
+            <option value="supertrend">Supertrend</option>
+            <option value="ichimoku">Ichimoku Cloud</option>
+          </optgroup>
+          <optgroup label="Mean Reversion">
+            <option value="BBandsRSI">BBands+RSI</option>
+            <option value="vwap_reversion">VWAP Reversion</option>
+            <option value="rsi_divergence">RSI Divergence</option>
+          </optgroup>
+          <optgroup label="Breakout">
+            <option value="vol_breakout">Vol Breakout</option>
+          </optgroup>
+          <optgroup label="DCA">
+            <option value="dca_momentum">DCA Momentum</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Interval</label>
+        <select id="interval">
+          <option value="1m">1m</option>
+          <option value="5m" selected>5m</option>
+          <option value="15m">15m</option>
+          <option value="1h">1h</option>
+          <option value="4h">4h</option>
+          <option value="1d">1d</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Leverage (x)</label>
+        <input type="number" id="leverage" value="10" min="1" max="100" step="1" />
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="dry-run" checked />
+        <label for="dry-run" style="cursor:pointer;color:var(--yellow);">DRY RUN</label>
+      </div>
     </div>
 
-    <div class="form-group">
-      <label>거래 코인 (여러 개 추가 가능)</label>
+    <!-- Symbols -->
+    <div class="lpanel-section">
+      <div class="lpanel-title">Symbols</div>
       <div id="symbol-tags"></div>
-      <div class="symbol-add-row">
+      <div class="sym-add-row">
         <input type="text" id="symbol-input" placeholder="BTC_USDT" />
-        <button class="btn-add-symbol" onclick="addSymbol()">+ 추가</button>
+        <button class="btn-add-sym" onclick="addSymbol()">+ ADD</button>
       </div>
     </div>
 
-    <div class="form-group">
-      <label for="interval">캔들 주기</label>
-      <select id="interval">
-        <option value="1m">1분</option>
-        <option value="5m" selected>5분</option>
-        <option value="15m">15분</option>
-        <option value="1h">1시간</option>
-        <option value="4h">4시간</option>
-        <option value="1d">1일</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label for="leverage">레버리지 (배)</label>
-      <input type="number" id="leverage" value="10" min="1" max="100" step="1" />
-    </div>
-
-    <div class="toggle-row">
-      <input type="checkbox" id="dry-run" checked />
-      <label for="dry-run" style="cursor:pointer;">DRY RUN (모의 거래)</label>
-    </div>
-
-    <div class="btn-row">
-      <button id="btn-start">▶ 시작</button>
-      <button id="btn-stop-all">■ 전체 정지</button>
-    </div>
-
-    <div class="capital-section">
-      <h3>투자 자금 설정</h3>
+    <!-- Capital -->
+    <div class="lpanel-section">
+      <div class="lpanel-title">Capital</div>
       <div class="radio-row">
-        <label><input type="radio" name="capital-mode" value="percent" checked /> 잔고 비율 (%)</label>
-        <label><input type="radio" name="capital-mode" value="fixed" /> 고정 (USDT)</label>
+        <label><input type="radio" name="capital-mode" value="percent" checked /> % Balance</label>
+        <label><input type="radio" name="capital-mode" value="fixed" /> Fixed USDT</label>
       </div>
-      <div class="capital-input-row">
-        <input type="number" id="capital-value" value="50" min="0" step="any" />
-        <span id="capital-approx">≈ — USDT</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="number" id="capital-value" value="50" min="0" step="any" style="width:80px;background:var(--surface2);border:1px solid var(--border2);border-radius:3px;color:var(--text);padding:4px 6px;font-family:var(--mono);font-size:11px;outline:none;" />
+        <span id="capital-approx" style="font-family:var(--mono);font-size:10px;color:var(--text-muted);">— USDT</span>
       </div>
-      <p style="font-size:11px;color:var(--text-muted);margin-top:6px;">* 코인 여러 개 거래 시 각 봇에 개별 적용됩니다</p>
+    </div>
+
+    <!-- Launch -->
+    <div class="lpanel-section">
+      <div class="btn-row">
+        <button class="btn-primary" id="btn-start">▶ START</button>
+        <button class="btn-danger" id="btn-stop-all">■ STOP ALL</button>
+      </div>
+    </div>
+
+    <!-- Active Bots -->
+    <div class="lpanel-section" style="flex:1;border-bottom:none;">
+      <div class="lpanel-title">Active Bots</div>
+      <div id="bots-list">
+        <div id="no-bots-msg">No bots running</div>
+      </div>
     </div>
   </div>
 
-  <!-- ── Active Bots Panel ──────────────────────────────────────────── -->
-  <div class="bots-panel" id="bots-panel">
-    <p id="no-bots-msg">실행 중인 봇이 없습니다. 코인을 추가하고 시작하세요.</p>
+  <!-- CHART AREA -->
+  <div id="chart-area">
+    <div id="chart-header">
+      <span id="chart-sym">BTC_USDT</span>
+      <span id="chart-price">—</span>
+      <span id="chart-change" class="chg">—</span>
+      <span class="sep">|</span>
+      <div class="interval-btns">
+        <button class="itvl-btn" data-itvl="1m">1m</button>
+        <button class="itvl-btn active" data-itvl="5m">5m</button>
+        <button class="itvl-btn" data-itvl="15m">15m</button>
+        <button class="itvl-btn" data-itvl="1h">1h</button>
+        <button class="itvl-btn" data-itvl="4h">4h</button>
+      </div>
+      <div class="ind-toggles">
+        <button class="ind-pill active" data-ind="ema"><span class="cdot" style="background:var(--accent);"></span>EMA</button>
+        <button class="ind-pill" data-ind="bb"><span class="cdot" style="background:var(--text-muted);"></span>BB</button>
+        <button class="ind-pill" data-ind="rsi"><span class="cdot" style="background:var(--purple);"></span>RSI</button>
+        <button class="ind-pill" data-ind="macd"><span class="cdot" style="background:var(--blue);"></span>MACD</button>
+      </div>
+    </div>
+
+    <div id="chart-panes">
+      <div id="chart-container"></div>
+      <div id="rsi-container"></div>
+      <div id="macd-container"></div>
+    </div>
+
+    <div id="avg-price-info">Avg entry: <span id="avg-price-label" style="color:var(--yellow);font-weight:600;"></span></div>
+
+    <div id="chart-actions">
+      <button class="chart-act-btn" id="btn-show-trades">SHOW TRADES</button>
+      <button class="chart-act-btn" id="btn-clear-trades">CLEAR MARKERS</button>
+    </div>
   </div>
 
-  <!-- ── PnL Summary ────────────────────────────────────────────────── -->
-  <div class="card pnl-card">
-    <div class="section-header"><h2>누적 손익 (실거래 기록)</h2></div>
-    <div class="pnl-stats">
-      <div class="pnl-stat"><span class="lbl">오늘</span><span class="val" id="pnl-today">—</span></div>
-      <div class="pnl-stat"><span class="lbl">이번주</span><span class="val" id="pnl-week">—</span></div>
-      <div class="pnl-stat"><span class="lbl">누적</span><span class="val" id="pnl-total">—</span></div>
-      <div class="pnl-stat"><span class="lbl">승률</span><span class="val" id="pnl-winrate">—</span></div>
-      <div class="pnl-stat"><span class="lbl">거래수</span><span class="val" id="pnl-trades">—</span></div>
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+    <div class="rpanel-section" style="flex:0 0 auto; max-height:50%;">
+      <div class="rpanel-title">Positions</div>
+      <div id="positions-list">
+        <div id="no-positions">No active positions</div>
+      </div>
     </div>
-    <div id="equity-container" style="height:200px;margin-top:12px;"></div>
-    <p id="pnl-empty" style="display:none;color:var(--text-muted);font-size:12px;margin-top:8px;">아직 청산된 거래 기록이 없습니다. (LIVE 모드 거래 시 자동 기록됩니다)</p>
+    <div class="rpanel-section" style="flex:1;">
+      <div class="rpanel-title">News Feed <span id="news-ts" style="font-weight:300;color:var(--text-dim);float:right;"></span></div>
+      <div id="news-list">
+        <div id="news-loading">Loading...</div>
+      </div>
+    </div>
   </div>
 
-  <!-- ── Price Chart ────────────────────────────────────────────────── -->
-  <div class="card chart-card">
-    <div class="section-header">
-      <h2>가격 차트</h2>
-      <span id="chart-symbol" style="color:var(--accent);font-size:13px;"></span>
-      <button id="btn-show-trades" class="btn-small" style="background:var(--yellow);color:#0d1117;">거래 표시</button>
-      <button id="btn-clear-trades" class="btn-small" style="background:var(--surface2);color:var(--text-muted);border:1px solid var(--border);">마커 지우기</button>
-    </div>
-    <div class="indicator-toggles">
-      <label><input type="checkbox" id="ind-ema" /> EMA (20/50)</label>
-      <label><input type="checkbox" id="ind-bb" /> 볼린저밴드</label>
-      <label><input type="checkbox" id="ind-rsi" /> RSI</label>
-      <label><input type="checkbox" id="ind-macd" /> MACD</label>
-    </div>
-    <div id="chart-container"></div>
-    <div id="rsi-container" style="height:120px;display:none;"></div>
-    <div id="macd-container" style="height:120px;display:none;"></div>
-    <div id="avg-price-info">평균 진입가: <span id="avg-price-label" style="color:var(--yellow);font-weight:600;"></span></div>
-  </div>
+</div>
 
-  <!-- ── Market Heatmap ─────────────────────────────────────────────── -->
-  <div class="card heatmap-card">
-    <div class="section-header">
-      <h2>마켓 히트맵 (24h)</h2>
-      <button id="btn-heatmap" class="btn-small" style="background:var(--accent);color:#0d1117;">새로고침</button>
-      <span id="heatmap-spinner" style="display:none;font-size:12px;color:var(--text-muted);">⏳ 로딩...</span>
-    </div>
-    <div id="heatmap-grid" class="heatmap-grid"></div>
+<!-- ── BOTTOM TABS ──────────────────────────────────────────────────────────── -->
+<div id="bottom-tabs">
+  <div id="tab-bar">
+    <button class="tab-btn active" data-tab="heatmap">HEATMAP</button>
+    <button class="tab-btn" data-tab="funding">FUNDING</button>
+    <button class="tab-btn" data-tab="scanner">COIN SCANNER</button>
+    <button class="tab-btn" data-tab="backtest">BACKTEST</button>
+    <button class="tab-btn" data-tab="pnl">P&amp;L CURVE</button>
+    <button class="tab-btn" data-tab="strategies">STRATEGIES</button>
   </div>
+  <div id="tab-content">
 
-  <!-- ── Funding / Long-Short ───────────────────────────────────────── -->
-  <div class="card funding-card">
-    <div class="section-header">
-      <h2>펀딩비 &amp; 롱/숏 비율 (시장 심리)</h2>
-      <button id="btn-funding" class="btn-small" style="background:var(--accent);color:#0d1117;">새로고침</button>
-      <span id="funding-spinner" style="display:none;font-size:12px;color:var(--text-muted);">⏳ 로딩...</span>
+    <!-- Heatmap -->
+    <div class="tab-pane active" id="tab-heatmap">
+      <div class="tab-action-row">
+        <button class="btn-tab-action" id="btn-heatmap">REFRESH</button>
+        <span class="spinner-txt" id="heatmap-spinner">Loading...</span>
+      </div>
+      <div id="heatmap-grid"></div>
     </div>
-    <table id="funding-table">
-      <thead><tr><th>심볼</th><th>펀딩비</th><th>롱/숏 비율</th><th>심리</th></tr></thead>
-      <tbody id="funding-tbody"></tbody>
-    </table>
-  </div>
 
-  <!-- ── Coin Recommendation ────────────────────────────────────────── -->
-  <div class="card recommend-card">
-    <div class="section-header">
-      <h2>코인 추천 &amp; 레버리지 추천</h2>
-      <button id="btn-recommend" class="btn-small" style="background:var(--accent);color:#0d1117;">분석 실행</button>
-      <span id="recommend-spinner">⏳ 분석 중...</span>
+    <!-- Funding -->
+    <div class="tab-pane" id="tab-funding">
+      <div class="tab-action-row">
+        <button class="btn-tab-action" id="btn-funding">REFRESH</button>
+        <span class="spinner-txt" id="funding-spinner">Loading...</span>
+      </div>
+      <table class="data-table" id="funding-table">
+        <thead><tr><th>SYMBOL</th><th>FUNDING RATE</th><th>LONG/SHORT</th><th>SENTIMENT</th></tr></thead>
+        <tbody id="funding-tbody"></tbody>
+      </table>
     </div>
-    <div id="recommend-error" style="display:none;color:var(--red);font-size:13px;"></div>
-    <table id="recommend-table">
-      <thead>
-        <tr>
-          <th>#</th><th>심볼</th><th>24h 모멘텀</th><th>변동성</th>
-          <th>거래량</th><th>방향</th><th>추천 레버리지</th><th>적용</th>
-        </tr>
-      </thead>
-      <tbody id="recommend-tbody"></tbody>
-    </table>
-    <p id="recommend-note" style="display:none;font-size:11px;color:var(--text-muted);margin-top:8px;">* 정량 분석 기반 참고용입니다. 투자 결정은 본인 책임입니다.</p>
-  </div>
 
-  <!-- ── Backtest ───────────────────────────────────────────────────── -->
-  <div class="card backtest-card">
-    <div class="section-header">
-      <h2>백테스트 (전략 비교)</h2>
-      <button id="btn-backtest" class="btn-small" style="background:var(--accent);color:#0d1117;">실행</button>
-      <span id="backtest-spinner">⏳ 실행 중...</span>
+    <!-- Scanner -->
+    <div class="tab-pane" id="tab-scanner">
+      <div class="tab-action-row">
+        <button class="btn-tab-action" id="btn-recommend">RUN SCANNER</button>
+        <span class="spinner-txt" id="recommend-spinner">Analyzing...</span>
+      </div>
+      <div class="error-txt" id="recommend-error"></div>
+      <table class="data-table" id="recommend-table" style="display:none;">
+        <thead>
+          <tr><th>#</th><th>SYMBOL</th><th>24H MOM</th><th>VOLATILITY</th><th>VOL RATIO</th><th>DIRECTION</th><th>REC LEV</th><th>ACTION</th></tr>
+        </thead>
+        <tbody id="recommend-tbody"></tbody>
+      </table>
     </div>
-    <div id="backtest-error" style="display:none;color:var(--red);font-size:13px;margin-bottom:8px;"></div>
-    <div id="backtest-recommended" style="display:none;margin-bottom:12px;">추천 전략: <span class="recommended-badge" id="recommended-name">—</span></div>
-    <table id="backtest-table">
-      <thead><tr><th>전략</th><th>총수익률</th><th>승률</th><th>샤프지수</th><th>최대낙폭</th><th>거래횟수</th></tr></thead>
-      <tbody id="backtest-tbody"></tbody>
-    </table>
-  </div>
 
-  <!-- ── Strategy Info ──────────────────────────────────────────────── -->
-  <div class="card strategy-info">
-    <h2>전략 설명 (10가지)</h2>
-    <div class="strategy-cards">
-      <div class="strategy-card"><h3>TSMOM</h3><p>12개월 수익률 부호로 방향 결정, 변동성 역수로 크기 조절.</p><p class="ref">Moskowitz et al. (2012)</p></div>
-      <div class="strategy-card"><h3>Dual MA</h3><p>단기(20) EMA ↑ 장기(60) EMA 돌파 시 롱, 반대 숏.</p><p class="ref">Faber (2007)</p></div>
-      <div class="strategy-card"><h3>BBands+RSI</h3><p>볼린저밴드 이탈 + RSI 과매수/과매도 동시 확인.</p><p class="ref">Bollinger (1992)</p></div>
-      <div class="strategy-card"><h3>변동성 돌파 🔥</h3><p>전일 레인지 k배 돌파 + 펀딩비 중립 필터. ATR 손절/익절.</p><p class="ref">Larry Williams</p></div>
-      <div class="strategy-card"><h3>RSI 다이버전스</h3><p>가격-RSI 반대 방향 시 반전 포착.</p></div>
-      <div class="strategy-card"><h3>Supertrend</h3><p>ATR 기반 동적 지지·저항선으로 추세 추종.</p><p class="ref">Olivier Seban</p></div>
-      <div class="strategy-card"><h3>EMA 리본</h3><p>피보나치 6개 EMA(8·13·21·34·55·89) 정렬로 강한 추세만 포착.</p></div>
-      <div class="strategy-card"><h3>VWAP 평균 회귀</h3><p>롤링 VWAP ±1.5σ 이탈 진입, VWAP 복귀 청산.</p></div>
-      <div class="strategy-card"><h3>이치모쿠 클라우드</h3><p>구름대·전환선·기준선 종합 판단 추세 추종.</p></div>
-      <div class="strategy-card"><h3>DCA 모멘텀</h3><p>EMA크로스→풀백→RSI확인 3단계 분할 진입. 10배 레버리지 특화.</p></div>
+    <!-- Backtest -->
+    <div class="tab-pane" id="tab-backtest">
+      <div class="tab-action-row">
+        <button class="btn-tab-action" id="btn-backtest">RUN BACKTEST</button>
+        <span class="spinner-txt" id="backtest-spinner">Running...</span>
+        <span id="backtest-recommended" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text-muted);">
+          Best: <span class="rec-badge" id="recommended-name">—</span>
+        </span>
+      </div>
+      <div class="error-txt" id="backtest-error"></div>
+      <table class="data-table" id="backtest-table" style="display:none;">
+        <thead><tr><th>STRATEGY</th><th>RETURN</th><th>WIN RATE</th><th>SHARPE</th><th>MAX DD</th><th>TRADES</th></tr></thead>
+        <tbody id="backtest-tbody"></tbody>
+      </table>
     </div>
+
+    <!-- P&L -->
+    <div class="tab-pane" id="tab-pnl">
+      <div class="pnl-stats">
+        <div class="pnl-stat"><span class="lbl">TODAY</span><span class="val" id="pnl-today">—</span></div>
+        <div class="pnl-stat"><span class="lbl">WEEK</span><span class="val" id="pnl-week">—</span></div>
+        <div class="pnl-stat"><span class="lbl">TOTAL</span><span class="val" id="pnl-total">—</span></div>
+        <div class="pnl-stat"><span class="lbl">WIN RATE</span><span class="val" id="pnl-winrate">—</span></div>
+        <div class="pnl-stat"><span class="lbl">TRADES</span><span class="val" id="pnl-trades">—</span></div>
+      </div>
+      <div id="equity-container"></div>
+      <p id="pnl-empty" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;">No closed trades yet. (LIVE mode trades are recorded automatically)</p>
+    </div>
+
+    <!-- Strategies -->
+    <div class="tab-pane" id="tab-strategies">
+      <div class="strategy-grid">
+        <div class="strategy-card"><h3>TSMOM</h3><p>Time-series momentum: 12-month return sign determines direction, volatility-scaled position sizing.</p><p class="ref">Moskowitz et al. (2012)</p></div>
+        <div class="strategy-card"><h3>Dual MA</h3><p>EMA(20) crosses above EMA(60) → Long; below → Short.</p><p class="ref">Faber (2007)</p></div>
+        <div class="strategy-card"><h3>BBands+RSI</h3><p>Bollinger Band breakout confirmed by RSI overbought/oversold levels.</p><p class="ref">Bollinger (1992)</p></div>
+        <div class="strategy-card"><h3>Vol Breakout</h3><p>Prior-day range × k factor breakout with funding-rate neutral filter. ATR-based SL/TP.</p><p class="ref">Larry Williams</p></div>
+        <div class="strategy-card"><h3>RSI Divergence</h3><p>Price-RSI divergence detection for trend reversal entries.</p></div>
+        <div class="strategy-card"><h3>Supertrend</h3><p>ATR-based dynamic support/resistance lines for trend following.</p><p class="ref">Olivier Seban</p></div>
+        <div class="strategy-card"><h3>EMA Ribbon</h3><p>Fibonacci EMA ribbon (8/13/21/34/55/89) alignment to capture strong trends only.</p></div>
+        <div class="strategy-card"><h3>VWAP Reversion</h3><p>Rolling VWAP ±1.5σ deviation entry, closes on VWAP touch.</p></div>
+        <div class="strategy-card"><h3>Ichimoku</h3><p>Cloud, conversion line, and base line combined for trend confirmation.</p></div>
+        <div class="strategy-card"><h3>DCA Momentum</h3><p>EMA cross → pullback → RSI confirmation 3-stage scaled entry. Optimized for 10x leverage.</p></div>
+      </div>
+    </div>
+
   </div>
-</main>
+</div>
+
+<!-- Floating position card -->
+<div id="float-pos">
+  <div class="fp-title">POSITIONS</div>
+  <div id="float-pos-items"></div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
 
-// ── Symbol tag management ────────────────────────────────────────────────
+// ── Utility ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function classifyLog(line) {
+  const u = line.toUpperCase();
+  if (line.startsWith("[WEB]")) return "web";
+  if (u.includes("ERROR") || u.includes("CRITICAL")) return "error";
+  if (u.includes("WARNING") || u.includes("WARN")) return "warn";
+  return "";
+}
+function fmtUsdt(v) {
+  return parseFloat(v||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtPnl(v) { return (v >= 0 ? "+" : "") + parseFloat(v||0).toFixed(2); }
+function pnlColor(v) { return parseFloat(v||0) > 0 ? "var(--green)" : parseFloat(v||0) < 0 ? "var(--red)" : "var(--text)"; }
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  $("clock").textContent = now.toUTCString().slice(17,25) + " UTC";
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+let heatmapLoaded = false;
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    const pane = $("tab-" + btn.dataset.tab);
+    if (pane) pane.classList.add("active");
+    if (btn.dataset.tab === "heatmap" && !heatmapLoaded) { refreshHeatmap(); heatmapLoaded = true; }
+    if (btn.dataset.tab === "pnl") refreshPnl();
+  });
+});
+
+// ── Symbol management ─────────────────────────────────────────────────────────
 let selectedSymbols = ["BTC_USDT"];
 
 function renderSymbolTags() {
-  const container = $("symbol-tags");
-  container.innerHTML = selectedSymbols.map(s => `
+  $("symbol-tags").innerHTML = selectedSymbols.map(s => `
     <span class="symbol-tag">
-      ${s}
-      <span class="remove" onclick="removeSymbol('${s}')">×</span>
+      ${esc(s)}
+      <span class="remove" onclick="removeSymbol('${esc(s)}')">×</span>
     </span>
   `).join("");
 }
 
 function addSymbol() {
-  const input = $("symbol-input");
-  const val = input.value.trim().toUpperCase().replace(/\s+/g, "_");
+  const inp = $("symbol-input");
+  const val = inp.value.trim().toUpperCase().replace(/\s+/g,"_");
   if (!val) return;
-  if (!val.includes("_USDT")) { alert("심볼은 'BTC_USDT' 형식이어야 합니다."); return; }
-  if (!selectedSymbols.includes(val)) selectedSymbols.push(val);
-  input.value = "";
+  if (!val.includes("_USDT")) { alert("Symbol must be in BTC_USDT format"); return; }
+  if (!selectedSymbols.includes(val)) { selectedSymbols.push(val); }
+  inp.value = "";
   renderSymbolTags();
+  if (typeof saveSettings === "function") saveSettings();
 }
 
 function removeSymbol(s) {
@@ -421,134 +867,167 @@ function removeSymbol(s) {
 $("symbol-input").addEventListener("keydown", e => { if (e.key === "Enter") addSymbol(); });
 renderSymbolTags();
 
-// ── Bot state ────────────────────────────────────────────────────────────
+// ── Bot state ─────────────────────────────────────────────────────────────────
 let currentBalance = 0;
-let activeBotIds = new Set();
-
-function escHtml(s) {
-  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-function classifyLog(line) {
-  const u = line.toUpperCase();
-  if (line.startsWith("[WEB]")) return "web";
-  if (u.includes("ERROR") || u.includes("CRITICAL")) return "error";
-  if (u.includes("WARNING") || u.includes("WARN")) return "warn";
-  return "";
-}
 
 function renderBots(bots) {
-  const panel = $("bots-panel");
+  const list = $("bots-list");
   const noMsg = $("no-bots-msg");
+  const posList = $("positions-list");
+  const noPosMsg = $("no-positions");
 
-  const running = bots.filter(b => b.running);
-
-  if (bots.length === 0) {
+  if (!bots.length) {
+    list.innerHTML = "";
+    list.appendChild(noMsg);
     noMsg.style.display = "block";
-    // Remove all bot cards
-    panel.querySelectorAll(".bot-card").forEach(el => el.remove());
+    posList.innerHTML = "";
+    posList.appendChild(noPosMsg);
+    noPosMsg.style.display = "block";
+    updateFloatPos([]);
     return;
   }
   noMsg.style.display = "none";
 
-  const existingIds = new Set([...panel.querySelectorAll(".bot-card")].map(el => el.dataset.botId));
-  const newIds = new Set(bots.map(b => b.bot_id));
-
-  // Remove cards for bots no longer present
-  panel.querySelectorAll(".bot-card").forEach(el => {
-    if (!newIds.has(el.dataset.botId)) el.remove();
-  });
+  // Render compact left-panel bot cards
+  const existIds = new Set([...list.querySelectorAll(".bot-mini-card")].map(el => el.dataset.botId));
+  const newIds   = new Set(bots.map(b => b.bot_id));
+  list.querySelectorAll(".bot-mini-card").forEach(el => { if (!newIds.has(el.dataset.botId)) el.remove(); });
 
   for (const bot of bots) {
-    let card = panel.querySelector(`[data-bot-id="${bot.bot_id}"]`);
+    let card = list.querySelector(`[data-bot-id="${bot.bot_id}"]`);
     if (!card) {
       card = document.createElement("div");
-      card.className = "bot-card";
+      card.className = "bot-mini-card";
       card.dataset.botId = bot.bot_id;
-      panel.appendChild(card);
+      list.appendChild(card);
     }
 
-    const statusClass = bot.running ? "running" : "stopped";
-    const statusLabel = bot.running ? "실행중" : "정지";
-
-    // Position holding block
     const isHolding = bot.pos_status === "홀딩중";
-    const dirColor  = bot.pos_direction === "Long" ? "var(--green)" : "var(--red)";
-    const pnl       = bot.pos_pnl ?? 0;
-    const pnlColor  = pnl >= 0 ? "var(--green)" : "var(--red)";
-    const pnlSign   = pnl >= 0 ? "+" : "";
+    const dir = bot.pos_direction;
+    const pnl = bot.pos_pnl ?? 0;
 
-    let posBlock = "";
+    let posLine = "";
     if (isHolding) {
-      posBlock = `
-        <div class="pos-block">
-          <div class="pos-status-badge" style="background:${dirColor}22;border:1px solid ${dirColor};color:${dirColor};">
-            ● 홀딩중 &nbsp;|&nbsp; ${bot.pos_direction === "Long" ? "▲ Long" : "▼ Short"}
-          </div>
-          <div class="pos-details">
-            <span>진입가 <b>$${(bot.pos_entry||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
-            <span>미실현 손익 <b style="color:${pnlColor}">${pnlSign}${pnl.toFixed(4)} USDT</b></span>
-            <span>청산가 <b style="color:var(--red)">$${(bot.pos_liq||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
-            <span>수량 <b>${Math.abs(bot.pos_size||0)} 계약</b></span>
-          </div>
-        </div>`;
+      const dirSym = dir === "Long" ? "▲ LONG" : "▼ SHORT";
+      const pnlStr = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + " USDT";
+      const pnlC   = pnl >= 0 ? "var(--green)" : "var(--red)";
+      posLine = `<div class="bot-mini-pos" style="color:${pnlC};">● ${dirSym} ${pnlStr}</div>`;
     } else {
-      posBlock = `
-        <div class="pos-block">
-          <div class="pos-status-badge" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);">
-            ○ 관망중 — 신호 대기
-          </div>
-        </div>`;
+      posLine = `<div class="bot-mini-pos" style="color:var(--text-dim);">○ WATCHING</div>`;
     }
 
-    const logHtml = (bot.recent_logs || []).slice(-20).map(l =>
-      `<div class="log-line ${classifyLog(l)}">${escHtml(l)}</div>`
+    const logHtml = (bot.recent_logs || []).slice(-10).map(l =>
+      `<div class="log-line ${classifyLog(l)}">${esc(l)}</div>`
     ).join("");
 
+    const dryColor = bot.dry_run ? "var(--yellow)" : "var(--red)";
     card.innerHTML = `
-      <div class="bot-card-header">
-        <h3>${bot.symbol}</h3>
-        <span class="bot-badge ${statusClass}"><span class="dot"></span>${statusLabel}</span>
-        <span style="font-size:11px;color:${bot.dry_run?'var(--yellow)':'var(--red)'};">${bot.dry_run?'DRY RUN':'LIVE'}</span>
+      <div class="bot-mini-header">
+        <span class="bot-mini-sym">${esc(bot.symbol)}</span>
+        ${bot.running ? '<span class="running-dot"></span>' : ''}
+        <span style="font-family:var(--mono);font-size:9px;color:${dryColor};">${bot.dry_run ? "DRY" : "LIVE"}</span>
       </div>
-      <div class="bot-meta">
-        <span>전략 <b>${bot.strategy}</b></span>
-        <span>주기 <b>${bot.interval}</b></span>
-        <span>레버리지 <b>${bot.leverage}x</b></span>
-      </div>
-      ${posBlock}
-      <div class="bot-log">${logHtml}</div>
-      <div class="bot-actions">
-        ${bot.running ? `<button class="btn-bot-stop" onclick="stopBot('${bot.bot_id}')">■ 정지</button>` : ""}
-        <button class="btn-bot-chart" onclick="loadChartForBot('${bot.symbol}', '${bot.interval}')">📈 차트 보기</button>
+      <div class="bot-mini-meta">${esc(bot.strategy)} · ${esc(bot.interval)} · ${bot.leverage}x</div>
+      ${posLine}
+      <div class="bot-mini-log">${logHtml}</div>
+      <div class="bot-mini-actions">
+        ${bot.running ? `<button class="btn-mini-stop" onclick="stopBot('${bot.bot_id}')">STOP</button>` : ""}
+        <button class="btn-mini-chart" onclick="loadChartForBot('${esc(bot.symbol)}','${esc(bot.interval)}')">CHART</button>
       </div>
     `;
 
-    // Auto-scroll log
-    const logEl = card.querySelector(".bot-log");
+    const logEl = card.querySelector(".bot-mini-log");
     if (logEl) logEl.scrollTop = logEl.scrollHeight;
   }
+
+  // Render right panel positions
+  noPosMsg.style.display = "none";
+  const posExistIds = new Set([...posList.querySelectorAll(".pos-card")].map(el => el.dataset.botId));
+  posList.querySelectorAll(".pos-card").forEach(el => { if (!newIds.has(el.dataset.botId)) el.remove(); });
+
+  for (const bot of bots) {
+    let pcard = posList.querySelector(`.pos-card[data-bot-id="${bot.bot_id}"]`);
+    if (!pcard) {
+      pcard = document.createElement("div");
+      pcard.dataset.botId = bot.bot_id;
+      posList.appendChild(pcard);
+    }
+
+    const isHolding = bot.pos_status === "홀딩중";
+    const dir = bot.pos_direction;
+    const pnl = bot.pos_pnl ?? 0;
+
+    if (isHolding) {
+      const isLong = dir === "Long";
+      pcard.className = `pos-card ${isLong ? "holding-long" : "holding-short"}`;
+      const dirSym = isLong ? "▲ LONG" : "▼ SHORT";
+      const dirColor = isLong ? "var(--green)" : "var(--red)";
+      const pnlC = pnl >= 0 ? "var(--green)" : "var(--red)";
+      pcard.innerHTML = `
+        <div class="pos-card-sym">
+          ${esc(bot.symbol)}
+          <span style="font-size:9px;color:${dirColor};">${dirSym}</span>
+        </div>
+        <div class="pos-card-grid">
+          <span>Entry <b>$${fmtUsdt(bot.pos_entry)}</b></span>
+          <span>PnL <b style="color:${pnlC};">${fmtPnl(pnl)}</b></span>
+          <span>Liq <b style="color:var(--red);">$${fmtUsdt(bot.pos_liq)}</b></span>
+          <span>Size <b>${Math.abs(bot.pos_size||0)}</b></span>
+        </div>
+      `;
+    } else {
+      pcard.className = "pos-card watching";
+      pcard.innerHTML = `
+        <div class="pos-card-sym">${esc(bot.symbol)}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">○ WATCHING — awaiting signal</div>
+      `;
+    }
+  }
+
+  if (!posList.querySelector(".pos-card")) {
+    posList.appendChild(noPosMsg);
+    noPosMsg.style.display = "block";
+  }
+
+  updateFloatPos(bots);
 }
 
+function updateFloatPos(bots) {
+  const holdings = bots.filter(b => b.pos_status === "홀딩중");
+  const fp = $("float-pos");
+  if (holdings.length === 0 || window.scrollY <= 60) {
+    fp.style.display = "none"; return;
+  }
+  fp.style.display = "block";
+  $("float-pos-items").innerHTML = holdings.map(b => {
+    const isLong = b.pos_direction === "Long";
+    const pnl = b.pos_pnl ?? 0;
+    const pnlC = pnl >= 0 ? "var(--green)" : "var(--red)";
+    return `<div class="fp-item">
+      <span class="fp-sym">${esc(b.symbol)}</span>
+      <span class="fp-dir" style="color:${isLong?'var(--green)':'var(--red)'};">${isLong?'▲':'▼'}</span>
+      <span class="fp-pnl" style="color:${pnlC};">${fmtPnl(pnl)}</span>
+    </div>`;
+  }).join("");
+}
+
+// ── Status poll ───────────────────────────────────────────────────────────────
 async function poll() {
   try {
     const r = await fetch("/api/status");
     if (!r.ok) return;
     const d = await r.json();
-
-    const balNum = (d.balance != null && !isNaN(d.balance)) ? parseFloat(d.balance) : null;
-    $("balance-val").textContent = balNum != null
-      ? balNum.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2})
-      : "—";
+    const balNum = d.balance != null && !isNaN(d.balance) ? parseFloat(d.balance) : null;
+    $("balance-val").textContent = balNum != null ? fmtUsdt(balNum) : "—";
     if (balNum != null) currentBalance = balNum;
-
     renderBots(d.bots || []);
     syncCapitalUI(d);
   } catch(_) {}
 }
 
-// ── Start / Stop ─────────────────────────────────────────────────────────
+// ── Start / Stop ──────────────────────────────────────────────────────────────
 $("btn-start").addEventListener("click", async () => {
-  if (selectedSymbols.length === 0) { alert("코인을 1개 이상 추가하세요."); return; }
+  if (selectedSymbols.length === 0) { alert("Add at least one symbol."); return; }
   const capMode = document.querySelector('input[name="capital-mode"]:checked');
   const payload = {
     strategy:      $("strategy").value,
@@ -561,40 +1040,28 @@ $("btn-start").addEventListener("click", async () => {
   };
   $("btn-start").disabled = true;
   try {
-    const r = await fetch("/api/start", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload),
-    });
+    const r = await fetch("/api/start", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
     const d = await r.json();
-    if (d.errors && d.errors.length > 0) {
-      alert("일부 실패: " + d.errors.map(e => e.bot_id + ": " + e.error).join("\n"));
-    }
-  } catch(e) { alert("오류: " + e); }
+    if (d.errors && d.errors.length > 0) alert("Partial failure:\n" + d.errors.map(e => e.bot_id+": "+e.error).join("\n"));
+  } catch(e) { alert("Error: "+e); }
   $("btn-start").disabled = false;
   await poll();
 });
 
 $("btn-stop-all").addEventListener("click", async () => {
-  if (!confirm("실행 중인 모든 봇을 정지하시겠습니까?")) return;
+  if (!confirm("Stop all running bots?")) return;
   $("btn-stop-all").disabled = true;
-  try {
-    await fetch("/api/stop_all", { method: "POST" });
-  } catch(e) {}
+  try { await fetch("/api/stop_all", { method:"POST" }); } catch(_) {}
   $("btn-stop-all").disabled = false;
   await poll();
 });
 
 async function stopBot(botId) {
-  try {
-    await fetch("/api/stop", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ bot_id: botId }),
-    });
-  } catch(e) {}
+  try { await fetch("/api/stop", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({bot_id: botId}) }); } catch(_) {}
   await poll();
 }
 
-// ── Capital ──────────────────────────────────────────────────────────────
+// ── Capital ───────────────────────────────────────────────────────────────────
 function updateCapitalApprox() {
   const mode = document.querySelector('input[name="capital-mode"]:checked').value;
   const val  = parseFloat($("capital-value").value) || 0;
@@ -604,18 +1071,13 @@ function updateCapitalApprox() {
       ? (currentBalance * val / 100).toFixed(2) + " USDT"
       : Math.min(val, currentBalance).toFixed(2) + " USDT";
   }
-  $("capital-approx").textContent = "≈ " + approx;
+  $("capital-approx").textContent = approx;
 }
 
 async function saveCapital() {
   const mode  = document.querySelector('input[name="capital-mode"]:checked').value;
   const value = parseFloat($("capital-value").value) || 0;
-  try {
-    await fetch("/api/set_capital", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ mode, value }),
-    });
-  } catch(_) {}
+  try { await fetch("/api/set_capital", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({mode, value}) }); } catch(_) {}
   updateCapitalApprox();
 }
 
@@ -635,103 +1097,118 @@ function syncCapitalUI(data) {
   updateCapitalApprox();
 }
 
-// ── Chart ────────────────────────────────────────────────────────────────
-let chartInstance = null;
-let candleSeries  = null;
-let avgPriceLine  = null;
+// ── Chart ─────────────────────────────────────────────────────────────────────
+let chartInstance   = null;
+let candleSeries    = null;
+let volumeSeries    = null;
+let avgPriceLine    = null;
 let currentChartSymbol   = "BTC_USDT";
 let currentChartInterval = "5m";
 
 function initChart() {
   const container = $("chart-container");
   chartInstance = LightweightCharts.createChart(container, {
-    width: container.clientWidth, height: 400,
-    layout: { background: { color: "#0d1117" }, textColor: "#c9d1d9" },
-    grid: { vertLines: { color: "#21262d" }, horzLines: { color: "#21262d" } },
+    width:  container.clientWidth,
+    height: container.clientHeight || 300,
+    layout: { background: { color: "#050507" }, textColor: "#5a5a70" },
+    grid:   { vertLines: { color: "#0f0f15" }, horzLines: { color: "#0f0f15" } },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-    rightPriceScale: { borderColor: "#30363d" },
-    timeScale: { borderColor: "#30363d", timeVisible: true, secondsVisible: false },
+    rightPriceScale: { borderColor: "#1c1c24" },
+    timeScale: { borderColor: "#1c1c24", timeVisible: true, secondsVisible: false },
   });
+
   candleSeries = chartInstance.addCandlestickSeries({
-    upColor: "#3fb950", downColor: "#f85149",
-    borderVisible: false, wickUpColor: "#3fb950", wickDownColor: "#f85149",
+    upColor:    "#00e676", downColor:  "#ff1744",
+    borderVisible: false,
+    wickUpColor:"#00e676", wickDownColor:"#ff1744",
   });
-  window.addEventListener("resize", () => { chartInstance.applyOptions({ width: container.clientWidth }); });
+
+  // Volume histogram on main chart
+  volumeSeries = chartInstance.addHistogramSeries({
+    color: "#1c1c24",
+    priceFormat: { type: "volume" },
+    priceScaleId: "vol",
+  });
+  chartInstance.priceScale("vol").applyOptions({
+    scaleMargins: { top: 0.85, bottom: 0 },
+  });
+
+  window.addEventListener("resize", () => {
+    chartInstance.applyOptions({ width: container.clientWidth, height: container.clientHeight || 300 });
+  });
 }
 
-// ── Indicator overlay series ───────────────────────────────────────────────
-let indSeries = {};   // name → series object
-let rsiChart = null, rsiSeries = null, macdChart = null, macdHist = null, macdLine = null, macdSig = null;
+// Indicator overlay series
+let indSeries = {};
+let rsiChart = null, rsiSeries = null;
+let macdChart = null, macdHist = null, macdLine = null, macdSig = null;
+
+let indState = { ema: true, bb: false, rsi: false, macd: false };
 
 function ensureIndicatorSeries() {
   if (!indSeries.ema20) {
-    indSeries.ema20 = chartInstance.addLineSeries({ color: "#58a6ff", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-    indSeries.ema50 = chartInstance.addLineSeries({ color: "#d29922", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-    indSeries.bb_up = chartInstance.addLineSeries({ color: "#8b949e", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-    indSeries.bb_lo = chartInstance.addLineSeries({ color: "#8b949e", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-    indSeries.bb_mid = chartInstance.addLineSeries({ color: "#6e7681", lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false });
+    indSeries.ema20  = chartInstance.addLineSeries({ color: "#f7931a", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    indSeries.ema50  = chartInstance.addLineSeries({ color: "#448aff", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    indSeries.bb_up  = chartInstance.addLineSeries({ color: "#3a3a50", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    indSeries.bb_lo  = chartInstance.addLineSeries({ color: "#3a3a50", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    indSeries.bb_mid = chartInstance.addLineSeries({ color: "#2a2a3c", lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false });
   }
 }
 
 async function updateIndicators() {
-  const wantEMA  = $("ind-ema").checked;
-  const wantBB   = $("ind-bb").checked;
-  const wantRSI  = $("ind-rsi").checked;
-  const wantMACD = $("ind-macd").checked;
-
-  if (!wantEMA && !wantBB && !wantRSI && !wantMACD) {
+  const { ema, bb, rsi, macd } = indState;
+  if (!ema && !bb && !rsi && !macd) {
     ensureIndicatorSeries();
     Object.values(indSeries).forEach(s => s.setData([]));
     $("rsi-container").style.display = "none";
     $("macd-container").style.display = "none";
     return;
   }
-
   try {
     const r = await fetch(`/api/indicators?symbol=${encodeURIComponent(currentChartSymbol)}&interval=${encodeURIComponent(currentChartInterval)}&limit=200`);
     if (!r.ok) return;
     const d = await r.json();
     ensureIndicatorSeries();
 
-    indSeries.ema20.setData(wantEMA ? (d.ema20||[]) : []);
-    indSeries.ema50.setData(wantEMA ? (d.ema50||[]) : []);
-    indSeries.bb_up.setData(wantBB ? (d.bb_upper||[]) : []);
-    indSeries.bb_lo.setData(wantBB ? (d.bb_lower||[]) : []);
-    indSeries.bb_mid.setData(wantBB ? (d.bb_mid||[]) : []);
+    indSeries.ema20.setData(ema ? (d.ema20||[]) : []);
+    indSeries.ema50.setData(ema ? (d.ema50||[]) : []);
+    indSeries.bb_up.setData(bb ? (d.bb_upper||[]) : []);
+    indSeries.bb_lo.setData(bb ? (d.bb_lower||[]) : []);
+    indSeries.bb_mid.setData(bb ? (d.bb_mid||[]) : []);
 
-    // RSI subpane
-    if (wantRSI) {
+    // RSI
+    if (rsi) {
       $("rsi-container").style.display = "block";
       if (!rsiChart) {
         rsiChart = LightweightCharts.createChart($("rsi-container"), {
-          width: $("rsi-container").clientWidth, height: 120,
-          layout: { background: { color: "#0d1117" }, textColor: "#8b949e" },
-          grid: { vertLines: { color: "#161b22" }, horzLines: { color: "#161b22" } },
-          rightPriceScale: { borderColor: "#30363d" },
-          timeScale: { borderColor: "#30363d", timeVisible: true, secondsVisible: false },
+          width: $("rsi-container").clientWidth, height: 90,
+          layout: { background: { color: "#050507" }, textColor: "#5a5a70" },
+          grid: { vertLines: { color: "#0f0f15" }, horzLines: { color: "#0f0f15" } },
+          rightPriceScale: { borderColor: "#1c1c24" },
+          timeScale: { borderColor: "#1c1c24", timeVisible: true, secondsVisible: false },
         });
-        rsiSeries = rsiChart.addLineSeries({ color: "#bc8cff", lineWidth: 1 });
+        rsiSeries = rsiChart.addLineSeries({ color: "#b388ff", lineWidth: 1 });
       }
       rsiSeries.setData(d.rsi || []);
       rsiChart.timeScale().fitContent();
     } else { $("rsi-container").style.display = "none"; }
 
-    // MACD subpane
-    if (wantMACD) {
+    // MACD
+    if (macd) {
       $("macd-container").style.display = "block";
       if (!macdChart) {
         macdChart = LightweightCharts.createChart($("macd-container"), {
-          width: $("macd-container").clientWidth, height: 120,
-          layout: { background: { color: "#0d1117" }, textColor: "#8b949e" },
-          grid: { vertLines: { color: "#161b22" }, horzLines: { color: "#161b22" } },
-          rightPriceScale: { borderColor: "#30363d" },
-          timeScale: { borderColor: "#30363d", timeVisible: true, secondsVisible: false },
+          width: $("macd-container").clientWidth, height: 90,
+          layout: { background: { color: "#050507" }, textColor: "#5a5a70" },
+          grid: { vertLines: { color: "#0f0f15" }, horzLines: { color: "#0f0f15" } },
+          rightPriceScale: { borderColor: "#1c1c24" },
+          timeScale: { borderColor: "#1c1c24", timeVisible: true, secondsVisible: false },
         });
-        macdHist = macdChart.addHistogramSeries({ color: "#3fb950" });
-        macdLine = macdChart.addLineSeries({ color: "#58a6ff", lineWidth: 1 });
-        macdSig  = macdChart.addLineSeries({ color: "#f85149", lineWidth: 1 });
+        macdHist = macdChart.addHistogramSeries({ color: "#00e676" });
+        macdLine = macdChart.addLineSeries({ color: "#448aff", lineWidth: 1 });
+        macdSig  = macdChart.addLineSeries({ color: "#ff1744", lineWidth: 1 });
       }
-      macdHist.setData((d.macd_hist||[]).map(p => ({ time: p.time, value: p.value, color: p.value >= 0 ? "#3fb95088" : "#f8514988" })));
+      macdHist.setData((d.macd_hist||[]).map(p => ({ time: p.time, value: p.value, color: p.value >= 0 ? "#00e67688" : "#ff174488" })));
       macdLine.setData(d.macd || []);
       macdSig.setData(d.macd_signal || []);
       macdChart.timeScale().fitContent();
@@ -739,65 +1216,100 @@ async function updateIndicators() {
   } catch(_) {}
 }
 
-["ind-ema","ind-bb","ind-rsi","ind-macd"].forEach(id => $(id).addEventListener("change", updateIndicators));
+// Indicator pill toggles
+document.querySelectorAll(".ind-pill").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const ind = btn.dataset.ind;
+    indState[ind] = !indState[ind];
+    btn.classList.toggle("active", indState[ind]);
+    updateIndicators();
+  });
+});
+
+// Interval buttons
+document.querySelectorAll(".itvl-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".itvl-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    fetchAndRenderChart(currentChartSymbol, btn.dataset.itvl);
+  });
+});
 
 async function fetchAndRenderChart(symbol, interval) {
   symbol   = symbol   || currentChartSymbol;
   interval = interval || currentChartInterval;
   currentChartSymbol   = symbol;
   currentChartInterval = interval;
+
+  // Sync interval buttons
+  document.querySelectorAll(".itvl-btn").forEach(b => b.classList.toggle("active", b.dataset.itvl === interval));
+
   try {
     const r = await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=200`);
     if (!r.ok) return;
     const data = await r.json();
     if (!Array.isArray(data) || data.length === 0) return;
+
     candleSeries.setData(data);
+
+    // Volume bars
+    volumeSeries.setData(data.map(d => ({
+      time:  d.time,
+      value: d.volume || 0,
+      color: d.close >= d.open ? "rgba(0,230,118,0.25)" : "rgba(255,23,68,0.25)",
+    })));
+
     chartInstance.timeScale().fitContent();
-    updateIndicators();
+
     const last = data[data.length - 1];
-    $("chart-symbol").textContent = `${symbol} · ${interval} · ${last.close.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})} USDT`;
+    const first = data[0];
+    const changePct = ((last.close - first.close) / first.close * 100).toFixed(2);
+    $("chart-sym").textContent   = symbol;
+    $("chart-price").textContent = fmtUsdt(last.close);
+    const chgEl = $("chart-change");
+    chgEl.textContent  = (changePct >= 0 ? "+" : "") + changePct + "%";
+    chgEl.className    = "chg " + (changePct >= 0 ? "up" : "dn");
+
+    updateIndicators();
   } catch(_) {}
 }
 
 function loadChartForBot(symbol, interval) {
   fetchAndRenderChart(symbol, interval);
   clearTradeMarkers();
-  window.scrollTo({ top: $("chart-container").getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" });
 }
 
-// ── Trade Markers ────────────────────────────────────────────────────────
+// Trade markers
 async function fetchAndShowTrades() {
   const strategy = $("strategy").value.toLowerCase().replace(/\s+/g,"_");
   try {
     const r = await fetch(`/api/trades?symbol=${encodeURIComponent(currentChartSymbol)}&interval=${encodeURIComponent(currentChartInterval)}&strategy=${encodeURIComponent(strategy)}&limit=200`);
     if (!r.ok) return;
     const trades = await r.json();
-    if (!Array.isArray(trades) || trades.length === 0) { alert("해당 기간 내 거래 없음"); return; }
-
+    if (!Array.isArray(trades) || trades.length === 0) { alert("No trades in range"); return; }
     const markers = [];
     let totalEntry = 0, entryCount = 0;
     for (const t of trades) {
       if (t.entry_time) {
-        markers.push({ time: t.entry_time, position: t.direction==="long"?"belowBar":"aboveBar", color: t.direction==="long"?"#3fb950":"#f85149", shape: t.direction==="long"?"arrowUp":"arrowDown", text: t.direction==="long"?"BUY":"SELL" });
+        markers.push({ time: t.entry_time, position: t.direction==="long"?"belowBar":"aboveBar", color: t.direction==="long"?"#00e676":"#ff1744", shape: t.direction==="long"?"arrowUp":"arrowDown", text: t.direction==="long"?"BUY":"SELL" });
         totalEntry += t.price; entryCount++;
       }
       if (t.exit_time) {
         const pnl = t.pnl_pct!=null ? (t.pnl_pct>0?`+${t.pnl_pct}%`:`${t.pnl_pct}%`) : "";
-        markers.push({ time: t.exit_time, position: t.direction==="long"?"aboveBar":"belowBar", color: "#8b949e", shape: "circle", text: `EXIT ${pnl}` });
+        markers.push({ time: t.exit_time, position: t.direction==="long"?"aboveBar":"belowBar", color: "#5a5a70", shape: "circle", text: `EXIT ${pnl}` });
       }
     }
     markers.sort((a,b) => a.time - b.time);
     candleSeries.setMarkers(markers);
-
     if (entryCount > 0) {
       const avg = totalEntry / entryCount;
       if (avgPriceLine) { try { candleSeries.removePriceLine(avgPriceLine); } catch(_) {} }
-      avgPriceLine = candleSeries.createPriceLine({ price: avg, color: "#d29922", lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `평단 ${avg.toFixed(2)}` });
-      $("avg-price-label").textContent = avg.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) + " USDT";
+      avgPriceLine = candleSeries.createPriceLine({ price: avg, color: "#ffd600", lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `avg ${avg.toFixed(2)}` });
+      $("avg-price-label").textContent = fmtUsdt(avg) + " USDT";
       $("avg-price-info").style.display = "block";
     }
     chartInstance.timeScale().fitContent();
-  } catch(e) { alert("오류: " + e); }
+  } catch(e) { alert("Error: "+e); }
 }
 
 function clearTradeMarkers() {
@@ -809,163 +1321,46 @@ function clearTradeMarkers() {
 $("btn-show-trades").addEventListener("click", fetchAndShowTrades);
 $("btn-clear-trades").addEventListener("click", clearTradeMarkers);
 
-// ── Coin Recommendation ──────────────────────────────────────────────────
-$("btn-recommend").addEventListener("click", async () => {
-  $("btn-recommend").disabled = true;
-  $("recommend-spinner").style.display = "inline";
-  $("recommend-error").style.display = "none";
-  $("recommend-table").style.display = "none";
-  $("recommend-note").style.display = "none";
-  try {
-    const r = await fetch("/api/recommend");
-    const d = await r.json();
-    if (!r.ok || d.ok === false) {
-      $("recommend-error").textContent = "오류: " + (d.error || "알 수 없음");
-      $("recommend-error").style.display = "block";
-    } else {
-      const tbody = $("recommend-tbody");
-      tbody.innerHTML = "";
-      (d.recommendations || []).forEach((rec, idx) => {
-        const tr = document.createElement("tr");
-        if (idx === 0) tr.className = "rec-rank-1";
-        const m24 = rec.momentum_24h >= 0 ? `+${rec.momentum_24h}%` : `${rec.momentum_24h}%`;
-        const dirColor = rec.direction === "long" ? "var(--green)" : "var(--red)";
-        tr.innerHTML = `
-          <td style="font-weight:700;color:var(--accent);">${idx+1}</td>
-          <td style="font-weight:600;">${rec.symbol}</td>
-          <td style="color:${rec.momentum_24h>=0?'var(--green)':'var(--red)'};">${m24}</td>
-          <td>${rec.atr_pct}%</td>
-          <td>${rec.vol_ratio}x</td>
-          <td style="color:${dirColor};font-weight:600;">${rec.direction==="long"?"▲ 롱":"▼ 숏"}</td>
-          <td style="color:var(--yellow);font-weight:700;">${rec.rec_leverage}x</td>
-          <td>
-            <button class="rec-apply-btn" data-symbol="${rec.symbol}" data-lev="${rec.rec_leverage}">차트</button>
-            <button class="rec-add-btn" data-symbol="${rec.symbol}" data-lev="${rec.rec_leverage}">+ 추가</button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-      tbody.querySelectorAll(".rec-apply-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          $("leverage").value = btn.dataset.lev;
-          fetchAndRenderChart(btn.dataset.symbol, $("interval").value);
-          clearTradeMarkers();
-        });
-      });
-      tbody.querySelectorAll(".rec-add-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const sym = btn.dataset.symbol;
-          if (!selectedSymbols.includes(sym)) { selectedSymbols.push(sym); renderSymbolTags(); }
-          $("leverage").value = btn.dataset.lev;
-        });
-      });
-      $("recommend-table").style.display = "table";
-      $("recommend-note").style.display = "block";
-    }
-  } catch(e) {
-    $("recommend-error").textContent = "네트워크 오류: " + e;
-    $("recommend-error").style.display = "block";
+// ── Ticker strip ──────────────────────────────────────────────────────────────
+const TICKER_SYMS = ["BTC_USDT","ETH_USDT","SOL_USDT","BNB_USDT","XRP_USDT","DOGE_USDT"];
+const tickerPrices = {};
+
+async function refreshTicker() {
+  for (const sym of TICKER_SYMS) {
+    try {
+      const r = await fetch(`/api/candles?symbol=${encodeURIComponent(sym)}&interval=5m&limit=24`);
+      if (!r.ok) continue;
+      const data = await r.json();
+      if (!Array.isArray(data) || data.length < 2) continue;
+      const last  = data[data.length - 1];
+      const first = data[0];
+      const chgPct = ((last.close - first.close) / first.close * 100).toFixed(2);
+      tickerPrices[sym] = { price: last.close, chg: parseFloat(chgPct) };
+    } catch(_) {}
   }
-  $("recommend-spinner").style.display = "none";
-  $("btn-recommend").disabled = false;
-});
-
-// ── Backtest ─────────────────────────────────────────────────────────────
-const STRATEGY_LABELS = {
-  tsmom:"TSMOM", dual_ma:"Dual MA", bbands_rsi:"BBands+RSI", vol_breakout:"변동성 돌파",
-  rsi_divergence:"RSI 다이버전스", supertrend:"Supertrend", ema_ribbon:"EMA 리본",
-  vwap_reversion:"VWAP 회귀", ichimoku:"이치모쿠", dca_momentum:"DCA 모멘텀",
-};
-
-$("btn-backtest").addEventListener("click", async () => {
-  $("btn-backtest").disabled = true;
-  $("backtest-spinner").style.display = "inline";
-  $("backtest-error").style.display = "none";
-  $("backtest-table").style.display = "none";
-  $("backtest-recommended").style.display = "none";
-  try {
-    const r = await fetch("/api/backtest", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ symbol: currentChartSymbol, interval: currentChartInterval, limit: 500 }),
-    });
-    const d = await r.json();
-    if (!r.ok || d.ok === false) {
-      $("backtest-error").textContent = "오류: " + (d.error || "알 수 없음");
-      $("backtest-error").style.display = "block";
-    } else {
-      if (d.recommended) {
-        $("recommended-name").textContent = STRATEGY_LABELS[d.recommended] || d.recommended;
-        $("backtest-recommended").style.display = "block";
-      }
-      const tbody = $("backtest-tbody");
-      tbody.innerHTML = "";
-      for (const [key, label] of Object.entries(STRATEGY_LABELS)) {
-        const m = d[key]; if (!m) continue;
-        const tr = document.createElement("tr");
-        if (key === d.recommended) tr.className = "bt-row-recommended";
-        tr.innerHTML = `<td>${label}${key===d.recommended?" ★":""}</td>
-          <td>${m.total_return_pct?.toFixed(2)+"%"||"—"}</td>
-          <td>${m.win_rate!=null?(m.win_rate*100).toFixed(1)+"%":"—"}</td>
-          <td>${m.sharpe_ratio?.toFixed(2)||"—"}</td>
-          <td>${m.max_drawdown_pct?.toFixed(2)+"%"||"—"}</td>
-          <td>${m.num_trades??""}</td>`;
-        tbody.appendChild(tr);
-      }
-      $("backtest-table").style.display = "table";
-    }
-  } catch(e) {
-    $("backtest-error").textContent = "네트워크 오류: " + e;
-    $("backtest-error").style.display = "block";
-  }
-  $("backtest-spinner").style.display = "none";
-  $("btn-backtest").disabled = false;
-});
-
-// ── PnL & Equity Curve ─────────────────────────────────────────────────────
-let equityChart = null, equitySeries = null;
-function fmtPnl(v) { return (v >= 0 ? "+" : "") + v.toFixed(2); }
-function pnlColor(v) { return v > 0 ? "var(--green)" : v < 0 ? "var(--red)" : "var(--text)"; }
-
-async function refreshPnl() {
-  try {
-    const r = await fetch("/api/pnl");
-    const d = await r.json();
-    if (!d.ok) return;
-    const set = (id, v, suffix="") => {
-      const el = $(id);
-      el.textContent = (typeof v === "number" ? fmtPnl(v) : v) + suffix;
-      if (id !== "pnl-winrate" && id !== "pnl-trades") el.style.color = pnlColor(v);
-    };
-    set("pnl-today", d.today_pnl, " USDT");
-    set("pnl-week",  d.week_pnl,  " USDT");
-    set("pnl-total", d.total_pnl, " USDT");
-    $("pnl-winrate").textContent = d.win_rate + "%";
-    $("pnl-trades").textContent  = d.num_trades + "회";
-
-    if (!equityChart) {
-      equityChart = LightweightCharts.createChart($("equity-container"), {
-        width: $("equity-container").clientWidth, height: 200,
-        layout: { background: { color: "#0d1117" }, textColor: "#8b949e" },
-        grid: { vertLines: { color: "#161b22" }, horzLines: { color: "#161b22" } },
-        rightPriceScale: { borderColor: "#30363d" },
-        timeScale: { borderColor: "#30363d", timeVisible: true, secondsVisible: false },
-      });
-      equitySeries = equityChart.addAreaSeries({ lineColor: "#3fb950", topColor: "#3fb95044", bottomColor: "#3fb95000", lineWidth: 2 });
-      window.addEventListener("resize", () => equityChart.applyOptions({ width: $("equity-container").clientWidth }));
-    }
-    const ec = d.equity_curve || [];
-    equitySeries.setData(ec);
-    if (ec.length > 0) { equityChart.timeScale().fitContent(); $("pnl-empty").style.display = "none"; }
-    else { $("pnl-empty").style.display = "block"; }
-  } catch(_) {}
+  renderTicker();
 }
 
-// ── Heatmap ─────────────────────────────────────────────────────────────────
+function renderTicker() {
+  const strip = $("ticker-strip");
+  strip.innerHTML = TICKER_SYMS.map(sym => {
+    const d = tickerPrices[sym];
+    if (!d) return `<div class="ticker-item" onclick="loadChartForBot('${sym}','5m')"><span class="sym">${sym.replace("_USDT","")}</span><span class="price">—</span></div>`;
+    const chgStr = (d.chg >= 0 ? "+" : "") + d.chg + "%";
+    const cls    = d.chg >= 0 ? "up" : "dn";
+    return `<div class="ticker-item" onclick="loadChartForBot('${sym}','5m')">
+      <span class="sym">${sym.replace("_USDT","")}</span>
+      <span class="price">${fmtUsdt(d.price)}</span>
+      <span class="chg ${cls}">${chgStr}</span>
+    </div>`;
+  }).join("");
+}
+
+// ── Heatmap ───────────────────────────────────────────────────────────────────
 function heatColor(chg) {
-  // green for up, red for down, intensity by magnitude
   const m = Math.min(Math.abs(chg) / 10, 1);
-  if (chg >= 0) return `rgba(63,185,80,${0.15 + m*0.55})`;
-  return `rgba(248,81,73,${0.15 + m*0.55})`;
+  if (chg >= 0) return `rgba(0,230,118,${0.12 + m*0.45})`;
+  return `rgba(255,23,68,${0.12 + m*0.45})`;
 }
 async function refreshHeatmap() {
   $("heatmap-spinner").style.display = "inline";
@@ -975,9 +1370,9 @@ async function refreshHeatmap() {
     if (d.ok) {
       $("heatmap-grid").innerHTML = (d.coins||[]).map(c => `
         <div class="heat-cell" style="background:${heatColor(c.change_24h)};" onclick="loadChartForBot('${c.symbol}', currentChartInterval)">
-          <div class="sym">${c.symbol.replace('_USDT','')}</div>
-          <div class="chg">${c.change_24h>=0?'+':''}${c.change_24h}%</div>
-          <div class="vol">변동성 ${c.volatility}%</div>
+          <div class="h-sym">${c.symbol.replace("_USDT","")}</div>
+          <div class="h-chg" style="color:${c.change_24h>=0?'var(--green)':'var(--red)'};">${c.change_24h>=0?'+':''}${c.change_24h}%</div>
+          <div class="h-vol">Vol ${c.volatility}%</div>
         </div>`).join("");
     }
   } catch(_) {}
@@ -985,7 +1380,7 @@ async function refreshHeatmap() {
 }
 $("btn-heatmap").addEventListener("click", refreshHeatmap);
 
-// ── Funding / Long-Short ────────────────────────────────────────────────────
+// ── Funding ───────────────────────────────────────────────────────────────────
 async function refreshFunding() {
   $("funding-spinner").style.display = "inline";
   try {
@@ -995,18 +1390,18 @@ async function refreshFunding() {
       $("funding-tbody").innerHTML = (d.coins||[]).map(c => {
         const fr = c.funding_rate;
         const lsr = c.long_short_ratio;
-        const frColor = fr == null ? "var(--text-muted)" : fr >= 0 ? "var(--green)" : "var(--red)";
-        let sentiment = "—", sColor = "var(--text-muted)";
+        const frC = fr == null ? "var(--text-muted)" : fr >= 0 ? "var(--green)" : "var(--red)";
+        let sentiment = "—", sC = "var(--text-muted)";
         if (lsr != null) {
-          if (lsr > 1.1) { sentiment = "롱 우세 📈"; sColor = "var(--green)"; }
-          else if (lsr < 0.9) { sentiment = "숏 우세 📉"; sColor = "var(--red)"; }
-          else { sentiment = "중립"; }
+          if (lsr > 1.1) { sentiment = "LONG DOMINANT"; sC = "var(--green)"; }
+          else if (lsr < 0.9) { sentiment = "SHORT DOMINANT"; sC = "var(--red)"; }
+          else { sentiment = "NEUTRAL"; }
         }
         return `<tr>
-          <td style="font-weight:600;">${c.symbol}</td>
-          <td style="color:${frColor};">${fr==null?'—':(fr>=0?'+':'')+fr+'%'}</td>
+          <td style="font-weight:600;color:var(--accent);">${esc(c.symbol)}</td>
+          <td style="color:${frC};">${fr==null?'—':(fr>=0?'+':'')+fr+'%'}</td>
           <td>${lsr==null?'—':lsr}</td>
-          <td style="color:${sColor};font-weight:600;">${sentiment}</td>
+          <td style="color:${sC};font-weight:600;">${sentiment}</td>
         </tr>`;
       }).join("");
     }
@@ -1015,7 +1410,183 @@ async function refreshFunding() {
 }
 $("btn-funding").addEventListener("click", refreshFunding);
 
-// ── Settings save/load ──────────────────────────────────────────────────────
+// ── Scanner (recommend) ───────────────────────────────────────────────────────
+const STRATEGY_LABELS = {
+  tsmom:"TSMOM", dual_ma:"Dual MA", bbands_rsi:"BBands+RSI", vol_breakout:"Vol Breakout",
+  rsi_divergence:"RSI Divergence", supertrend:"Supertrend", ema_ribbon:"EMA Ribbon",
+  vwap_reversion:"VWAP Reversion", ichimoku:"Ichimoku", dca_momentum:"DCA Momentum",
+};
+
+$("btn-recommend").addEventListener("click", async () => {
+  $("btn-recommend").disabled = true;
+  $("recommend-spinner").style.display = "inline";
+  $("recommend-error").style.display = "none";
+  $("recommend-table").style.display = "none";
+  try {
+    const r = await fetch("/api/recommend");
+    const d = await r.json();
+    if (!r.ok || d.ok === false) {
+      $("recommend-error").textContent = "Error: " + (d.error || "unknown");
+      $("recommend-error").style.display = "block";
+    } else {
+      const tbody = $("recommend-tbody");
+      tbody.innerHTML = "";
+      (d.recommendations || []).forEach((rec, idx) => {
+        const tr = document.createElement("tr");
+        const m24 = rec.momentum_24h >= 0 ? `+${rec.momentum_24h}%` : `${rec.momentum_24h}%`;
+        const dirC = rec.direction === "long" ? "var(--green)" : "var(--red)";
+        tr.innerHTML = `
+          <td style="font-weight:700;color:var(--text-muted);">${idx+1}</td>
+          <td style="font-weight:600;color:var(--accent);">${esc(rec.symbol)}</td>
+          <td style="color:${rec.momentum_24h>=0?'var(--green)':'var(--red)'};">${m24}</td>
+          <td>${rec.atr_pct}%</td>
+          <td>${rec.vol_ratio}x</td>
+          <td style="color:${dirC};font-weight:700;">${rec.direction==="long"?"▲ LONG":"▼ SHORT"}</td>
+          <td style="color:var(--yellow);font-weight:700;">${rec.rec_leverage}x</td>
+          <td>
+            <button class="rec-apply" data-symbol="${esc(rec.symbol)}" data-lev="${rec.rec_leverage}">CHART</button>
+            <button class="rec-add"   data-symbol="${esc(rec.symbol)}" data-lev="${rec.rec_leverage}">+ADD</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      tbody.querySelectorAll(".rec-apply").forEach(btn => {
+        btn.addEventListener("click", () => {
+          $("leverage").value = btn.dataset.lev;
+          fetchAndRenderChart(btn.dataset.symbol, $("interval").value);
+          clearTradeMarkers();
+        });
+      });
+      tbody.querySelectorAll(".rec-add").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const sym = btn.dataset.symbol;
+          if (!selectedSymbols.includes(sym)) { selectedSymbols.push(sym); renderSymbolTags(); }
+          $("leverage").value = btn.dataset.lev;
+        });
+      });
+      $("recommend-table").style.display = "table";
+    }
+  } catch(e) {
+    $("recommend-error").textContent = "Network error: " + e;
+    $("recommend-error").style.display = "block";
+  }
+  $("recommend-spinner").style.display = "none";
+  $("btn-recommend").disabled = false;
+});
+
+// ── Backtest ──────────────────────────────────────────────────────────────────
+$("btn-backtest").addEventListener("click", async () => {
+  $("btn-backtest").disabled = true;
+  $("backtest-spinner").style.display = "inline";
+  $("backtest-error").style.display = "none";
+  $("backtest-table").style.display = "none";
+  $("backtest-recommended").style.display = "none";
+  try {
+    const r = await fetch("/api/backtest", {
+      method: "POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ symbol: currentChartSymbol, interval: currentChartInterval, limit: 500 }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.ok === false) {
+      $("backtest-error").textContent = "Error: " + (d.error || "unknown");
+      $("backtest-error").style.display = "block";
+    } else {
+      if (d.recommended) {
+        $("recommended-name").textContent = STRATEGY_LABELS[d.recommended] || d.recommended;
+        $("backtest-recommended").style.display = "inline-flex";
+      }
+      const tbody = $("backtest-tbody");
+      tbody.innerHTML = "";
+      for (const [key, label] of Object.entries(STRATEGY_LABELS)) {
+        const m = d[key]; if (!m) continue;
+        const tr = document.createElement("tr");
+        if (key === d.recommended) tr.className = "bt-row-rec";
+        tr.innerHTML = `<td>${esc(label)}${key===d.recommended?" ★":""}</td>
+          <td style="color:${(m.total_return_pct||0)>=0?'var(--green)':'var(--red)'};">${m.total_return_pct?.toFixed(2)+"%"||"—"}</td>
+          <td>${m.win_rate!=null?(m.win_rate*100).toFixed(1)+"%":"—"}</td>
+          <td>${m.sharpe_ratio?.toFixed(2)||"—"}</td>
+          <td style="color:var(--red);">${m.max_drawdown_pct?.toFixed(2)+"%"||"—"}</td>
+          <td>${m.num_trades??""}</td>`;
+        tbody.appendChild(tr);
+      }
+      $("backtest-table").style.display = "table";
+    }
+  } catch(e) {
+    $("backtest-error").textContent = "Network error: " + e;
+    $("backtest-error").style.display = "block";
+  }
+  $("backtest-spinner").style.display = "none";
+  $("btn-backtest").disabled = false;
+});
+
+// ── P&L & Equity Curve ────────────────────────────────────────────────────────
+let equityChart = null, equitySeries = null;
+
+async function refreshPnl() {
+  try {
+    const r = await fetch("/api/pnl");
+    const d = await r.json();
+    if (!d.ok) return;
+    function set(id, v, suffix="") {
+      const el = $(id);
+      el.textContent = (typeof v === "number" ? fmtPnl(v) : v) + suffix;
+      if (id !== "pnl-winrate" && id !== "pnl-trades") el.style.color = pnlColor(v);
+    }
+    set("pnl-today", d.today_pnl, " USDT");
+    set("pnl-week",  d.week_pnl,  " USDT");
+    set("pnl-total", d.total_pnl, " USDT");
+    $("pnl-winrate").textContent = d.win_rate + "%";
+    $("pnl-trades").textContent  = d.num_trades;
+
+    if (!equityChart) {
+      equityChart = LightweightCharts.createChart($("equity-container"), {
+        width: $("equity-container").clientWidth, height: 100,
+        layout: { background: { color: "#050507" }, textColor: "#5a5a70" },
+        grid:   { vertLines: { color: "#0f0f15" }, horzLines: { color: "#0f0f15" } },
+        rightPriceScale: { borderColor: "#1c1c24" },
+        timeScale: { borderColor: "#1c1c24", timeVisible: true, secondsVisible: false },
+      });
+      equitySeries = equityChart.addAreaSeries({ lineColor: "#00e676", topColor: "#00e67633", bottomColor: "#00e67600", lineWidth: 2 });
+      window.addEventListener("resize", () => equityChart.applyOptions({ width: $("equity-container").clientWidth }));
+    }
+    const ec = d.equity_curve || [];
+    equitySeries.setData(ec);
+    if (ec.length > 0) { equityChart.timeScale().fitContent(); $("pnl-empty").style.display = "none"; }
+    else $("pnl-empty").style.display = "block";
+  } catch(_) {}
+}
+
+// ── News Feed ─────────────────────────────────────────────────────────────────
+async function refreshNews() {
+  try {
+    const r = await fetch("/api/news");
+    const d = await r.json();
+    const list = $("news-list");
+    if (!d.ok || !d.news || !d.news.length) {
+      list.innerHTML = `<div id="news-loading" style="color:var(--text-dim);font-family:var(--mono);font-size:10px;padding:10px;text-align:center;">No news available</div>`;
+      return;
+    }
+    const now = new Date();
+    $("news-ts").textContent = "Updated " + now.toTimeString().slice(0,5);
+    list.innerHTML = d.news.map(item => {
+      let timeStr = "";
+      if (item.pubDate) {
+        try {
+          const dt = new Date(item.pubDate);
+          timeStr = dt.toTimeString().slice(0,5);
+        } catch(_) {}
+      }
+      return `<a class="news-item" href="${esc(item.link)}" target="_blank" rel="noopener">
+        <span class="news-title">${esc(item.title)}</span>
+        <span class="news-time">${timeStr}</span>
+      </a>`;
+    }).join("");
+  } catch(_) {
+    $("news-list").innerHTML = `<div id="news-loading" style="color:var(--red);font-family:var(--mono);font-size:10px;padding:10px;text-align:center;">Failed to load news</div>`;
+  }
+}
+
+// ── Settings save/load ────────────────────────────────────────────────────────
 async function saveSettings() {
   const capMode = document.querySelector('input[name="capital-mode"]:checked');
   const data = {
@@ -1031,8 +1602,8 @@ async function loadSettings() {
     const d = await r.json();
     const s = d.settings || {};
     if (s.strategy) $("strategy").value = s.strategy;
-    if (s.interval) $("interval").value = s.interval;
-    if (s.leverage) $("leverage").value = s.leverage;
+    if (s.interval)  $("interval").value = s.interval;
+    if (s.leverage)  $("leverage").value = s.leverage;
     if (typeof s.dry_run === "boolean") $("dry-run").checked = s.dry_run;
     if (Array.isArray(s.symbols) && s.symbols.length) { selectedSymbols = s.symbols; renderSymbolTags(); }
     if (s.capital_value) $("capital-value").value = s.capital_value;
@@ -1041,19 +1612,22 @@ async function loadSettings() {
 }
 ["strategy","interval","leverage","dry-run","capital-value"].forEach(id => $(id).addEventListener("change", saveSettings));
 
-// ── Init ─────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
 loadSettings();
 poll();
 setInterval(poll, 2000);
 initChart();
 fetchAndRenderChart("BTC_USDT", "5m");
 setInterval(() => fetchAndRenderChart(), 30000);
+refreshTicker();
+setInterval(refreshTicker, 15000);
+refreshHeatmap(); heatmapLoaded = true;
 refreshPnl();
 setInterval(refreshPnl, 15000);
-refreshHeatmap();
-setInterval(refreshHeatmap, 60000);
 refreshFunding();
 setInterval(refreshFunding, 60000);
+refreshNews();
+setInterval(refreshNews, 300000);
 </script>
 </body>
 </html>
