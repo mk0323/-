@@ -742,24 +742,3 @@ def api_news():
         return jsonify({"ok": True, "news": items})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/api/news")
-def api_news():
-    import urllib.request
-    import xml.etree.ElementTree as ET
-    try:
-        url = "https://cryptopanic.com/news/rss/"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; GateBot/1.0)"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            content = resp.read()
-        root = ET.fromstring(content)
-        items = []
-        for item in root.findall(".//item")[:25]:
-            title = item.findtext("title", "")
-            link  = item.findtext("link", "")
-            pubDate = item.findtext("pubDate", "")
-            items.append({"title": title, "link": link, "pubDate": pubDate})
-        return jsonify({"ok": True, "news": items})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
