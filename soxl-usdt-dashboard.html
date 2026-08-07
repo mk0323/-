@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOXL/USDT 실시간 확률 대시보드 (Gate.io Futures)</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121821; --panel2:#161d28; --border:#232b38;
+    --text:#e6edf3; --muted:#8b98a9; --up:#26a17b; --down:#e5484d;
+    --accent:#4c8bf5; --warn:#e8a33d;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Pretendard,Roboto,sans-serif;
+    padding:20px; line-height:1.45;
+  }
+  h1{font-size:18px; margin:0 0 4px;}
+  .sub{color:var(--muted); font-size:12px; margin-bottom:16px;}
+  .grid{display:grid; grid-template-columns:340px 1fr; gap:16px; align-items:start;}
+  @media (max-width:900px){ .grid{grid-template-columns:1fr;} }
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; margin-bottom:16px;
+  }
+  .panel h2{font-size:13px; margin:0 0 10px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
+  label{display:block; font-size:12px; color:var(--muted); margin:10px 0 4px;}
+  input[type=text], input[type=number], input[type=password], select{
+    width:100%; padding:7px 8px; background:var(--panel2); border:1px solid var(--border);
+    border-radius:6px; color:var(--text); font-size:13px;
+  }
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+  button{
+    cursor:pointer; border:none; border-radius:6px; padding:9px 14px; font-size:13px; font-weight:600;
+  }
+  .btn-primary{background:var(--accent); color:#fff;}
+  .btn-stop{background:#3a2230; color:var(--down);}
+  .btn-row{display:flex; gap:8px; margin-top:12px;}
+  .checkbox-row{display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:var(--muted);}
+  .note{font-size:11px; color:var(--warn); margin-top:8px; background:#221b0d; border:1px solid #4a3a12; padding:8px; border-radius:6px;}
+  .status-line{font-size:12px; color:var(--muted); margin-top:10px;}
+  .status-dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--muted); margin-right:6px;}
+  .status-dot.ok{background:var(--up);}
+  .status-dot.err{background:var(--down);}
+  .error-box{display:none; background:#2a1418; border:1px solid #5a2229; color:#ff9da3; font-size:12px; padding:8px; border-radius:6px; margin-top:8px; white-space:pre-wrap;}
+
+  .price-big{font-size:32px; font-weight:700; letter-spacing:.02em;}
+  .price-row{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  .chg{font-size:14px; font-weight:600;}
+  .chg.up{color:var(--up);} .chg.down{color:var(--down);}
+  .metrics{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:12px;}
+  @media (max-width:600px){ .metrics{grid-template-columns:1fr;} }
+  .metric{background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+  .metric .k{font-size:11px; color:var(--muted); margin-bottom:4px;}
+  .metric .v{font-size:15px; font-weight:600;}
+  .tag{display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600;}
+  .tag.up{background:rgba(38,161,123,.15); color:var(--up);}
+  .tag.down{background:rgba(229,72,77,.15); color:var(--down);}
+  .tag.flat{background:rgba(139,152,169,.15); color:var(--muted);}
+
+  .prob-wrap{display:flex; gap:16px; align-items:center; flex-wrap:wrap;}
+  .prob-bar-outer{flex:1; min-width:220px; height:26px; border-radius:13px; overflow:hidden; display:flex; background:var(--panel2); border:1px solid var(--border);}
+  .prob-bar-up{background:var(--up); display:flex; align-items:center; justify-content:flex-start; padding-left:8px; font-size:12px; font-weight:700; color:#fff;}
+  .prob-bar-down{background:var(--down); display:flex; align-items:center; justify-content:flex-end; padding-right:8px; font-size:12px; font-weight:700; color:#fff;}
+  .prob-nums{display:flex; gap:20px; font-size:13px;}
+  .prob-nums b{font-size:20px; display:block;}
+  canvas{width:100%; height:180px; display:block; background:var(--panel2); border:1px solid var(--border); border-radius:8px;}
+
+  .footer-note{font-size:11px; color:var(--muted); margin-top:20px; line-height:1.6;}
+  a{color:var(--accent);}
+</style>
+</head>
+<body>
+
+<h1>SOXL/USDT 실시간 확률 대시보드</h1>
+<div class="sub">Gate.io USDT Futures · 볼린저 밴드 + 이치모쿠 기반 휴리스틱 방향 확률 (모니터링 전용, 자동 주문 없음)</div>
+
+<div class="grid">
+  <!-- LEFT: config -->
+  <div>
+    <div class="panel">
+      <h2>연결 설정</h2>
+      <label>계약(Contract)</label>
+      <input type="text" id="cfgContract" value="SOXL_USDT">
+      <label>정산 통화(Settle)</label>
+      <select id="cfgSettle">
+        <option value="usdt" selected>usdt</option>
+      </select>
+      <label>캔들 간격 / 조회 개수</label>
+      <div class="row2">
+        <select id="cfgInterval">
+          <option value="1m">1m</option>
+          <option value="5m" selected>5m</option>
+          <option value="15m">15m</option>
+          <option value="1h">1h</option>
+        </select>
+        <input type="number" id="cfgLimit" value="200" min="100" max="1000">
+      </div>
+      <label>폴링 주기 (초, 실시간 갱신 간격)</label>
+      <input type="number" id="cfgPoll" value="5" min="2" max="60">
+
+      <div class="btn-row">
+        <button class="btn-primary" id="btnStart">시작</button>
+        <button class="btn-stop" id="btnStop">정지</button>
+      </div>
+      <div class="status-line"><span class="status-dot" id="statusDot"></span><span id="statusText">대기 중</span></div>
+      <div class="error-box" id="errorBox"></div>
+    </div>
+
+    <div class="panel">
+      <h2>지표 파라미터</h2>
+      <label>볼린저 밴드 (기간 / 승수)</label>
+      <div class="row2">
+        <input type="number" id="cfgBbPeriod" value="20">
+        <input type="number" id="cfgBbMult" value="2" step="0.1">
+      </div>
+      <label>이치모쿠 (전환선 / 기준선 / 선행스팬B)</label>
+      <div class="row3">
+        <input type="number" id="cfgTenkan" value="9">
+        <input type="number" id="cfgKijun" value="26">
+        <input type="number" id="cfgSenkou" value="52">
+      </div>
+      <label>변동성 계산 구간 (최근 N개 캔들 수익률)</label>
+      <input type="number" id="cfgSigmaLookback" value="50" min="20" max="300">
+    </div>
+
+    <div class="panel">
+      <h2>Gate.io API 키 (선택 · 잔고 조회 전용)</h2>
+      <div class="note">
+        가격/지표/확률 계산은 공개 API만 사용하므로 키가 없어도 전부 동작합니다.
+        아래 키는 <b>선물 계좌 잔고 조회(GET, 읽기 전용)</b>에만 사용되며 주문은 절대 실행하지 않습니다.
+        Gate.io에서 <b>"거래/출금 권한 없는 읽기 전용 키"</b>를 발급해 사용하세요.
+        키는 이 브라우저 안에서만 서명·전송되며 외부 서버로 전송되지 않습니다.
+      </div>
+      <label>API Key</label>
+      <input type="text" id="cfgApiKey" autocomplete="off">
+      <label>API Secret</label>
+      <input type="password" id="cfgApiSecret" autocomplete="off">
+      <div class="checkbox-row">
+        <input type="checkbox" id="cfgSaveKey">
+        <label style="margin:0;" for="cfgSaveKey">이 브라우저(localStorage)에 저장 (공용 PC에서는 비권장)</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: dashboard -->
+  <div>
+    <div class="panel">
+      <h2>현재가</h2>
+      <div class="price-row">
+        <div class="price-big" id="lastPrice">-</div>
+        <div class="chg" id="chg24h">-</div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="k">마크 가격</div><div class="v" id="markPrice">-</div></div>
+        <div class="metric"><div class="k">지수 가격</div><div class="v" id="indexPrice">-</div></div>
+        <div class="metric"><div class="k">24h 고가 / 저가</div><div class="v" id="hi24Lo24">-</div></div>
+        <div class="metric"><div class="k">선물 계좌 잔고 (USDT)</div><div class="v" id="balance">키 미입력</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>볼린저 밴드</h2>
+      <div class="metrics">
+        <div class="metric"><div class="k">중심선(SMA)</div><div class="v" id="bbMid">-</div></div>
+        <div class="metric"><div class="k">상단 / 하단</div><div class="v" id="bbBand">-</div></div>
+        <div class="metric"><div class="k">%B (밴드 내 위치)</div><div class="v" id="bbPercentB">-</div></div>
+        <div class="metric"><div class="k">밴드폭 (변동성)</div><div class="v" id="bbWidth">-</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>이치모쿠 균형표</h2>
+      <div class="metrics">
+        <div class="metric"><div class="k">전환선 / 기준선</div><div class="v" id="ichiTK">-</div></div>
+        <div class="metric"><div class="k">TK 크로스</div><div class="v" id="ichiCross">-</div></div>
+        <div class="metric"><div class="k">가격 vs 구름대</div><div class="v" id="ichiCloudPos">-</div></div>
+        <div class="metric"><div class="k">선행 구름 전환(26봉 후)</div><div class="v" id="ichiFutureCloud">-</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>가격 차트 (최근 캔들 종가 + 볼린저 밴드)</h2>
+      <canvas id="chart" width="900" height="180"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>1% 변동 방향 확률 (다음 캔들, 지표 기반 휴리스틱)</h2>
+      <div class="prob-wrap">
+        <div class="prob-bar-outer">
+          <div class="prob-bar-up" id="probUpBar">0%</div>
+          <div class="prob-bar-down" id="probDownBar">0%</div>
+        </div>
+      </div>
+      <div class="prob-nums" style="margin-top:12px;">
+        <div>상승 확률<b id="probUpNum" style="color:var(--up);">-</b></div>
+        <div>하락 확률<b id="probDownNum" style="color:var(--down);">-</b></div>
+        <div>1%+ 변동 발생 확률<b id="probAnyNum">-</b></div>
+        <div>변동성(σ, 캔들당)<b id="sigmaNum">-</b></div>
+        <div>편향 점수(-1~+1)<b id="biasNum">-</b></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-note">
+  이 대시보드는 투자 조언이 아니며, 볼린저 밴드/이치모쿠 지표를 정규분포 근사와 결합한 <b>휴리스틱 추정치</b>입니다.
+  실제 시장은 정규분포를 따르지 않고, 과거 지표 패턴이 미래 확률을 보장하지 않습니다. 참고용으로만 사용하세요.
+  자동 매매/주문 기능은 포함되어 있지 않으며, 모든 매매 판단과 실행은 사용자 본인의 책임입니다.
+  브라우저에서 Gate.io API로의 요청이 CORS 정책에 막히는 경우, 잔고 조회만 실패하고 시세/지표/확률 계산은 정상 동작합니다.
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const REST_BASE = "https://api.gateio.ws";
+
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    contract: $("cfgContract"), settle: $("cfgSettle"), interval: $("cfgInterval"), limit: $("cfgLimit"),
+    poll: $("cfgPoll"), bbPeriod: $("cfgBbPeriod"), bbMult: $("cfgBbMult"),
+    tenkan: $("cfgTenkan"), kijun: $("cfgKijun"), senkou: $("cfgSenkou"), sigmaLookback: $("cfgSigmaLookback"),
+    apiKey: $("cfgApiKey"), apiSecret: $("cfgApiSecret"), saveKey: $("cfgSaveKey"),
+    btnStart: $("btnStart"), btnStop: $("btnStop"),
+    statusDot: $("statusDot"), statusText: $("statusText"), errorBox: $("errorBox"),
+    lastPrice: $("lastPrice"), chg24h: $("chg24h"), markPrice: $("markPrice"), indexPrice: $("indexPrice"),
+    hi24Lo24: $("hi24Lo24"), balance: $("balance"),
+    bbMid: $("bbMid"), bbBand: $("bbBand"), bbPercentB: $("bbPercentB"), bbWidth: $("bbWidth"),
+    ichiTK: $("ichiTK"), ichiCross: $("ichiCross"), ichiCloudPos: $("ichiCloudPos"), ichiFutureCloud: $("ichiFutureCloud"),
+    probUpBar: $("probUpBar"), probDownBar: $("probDownBar"), probUpNum: $("probUpNum"), probDownNum: $("probDownNum"),
+    probAnyNum: $("probAnyNum"), sigmaNum: $("sigmaNum"), biasNum: $("biasNum"),
+    chart: $("chart"),
+  };
+
+  let timer = null;
+  let tickCount = 0;
+
+  // ---------- persisted config ----------
+  const LS_KEY = "soxl_dashboard_cfg_v1";
+  function loadSavedConfig(){
+    try{
+      const raw = localStorage.getItem(LS_KEY);
+      if(!raw) return;
+      const cfg = JSON.parse(raw);
+      if(cfg.contract) els.contract.value = cfg.contract;
+      if(cfg.interval) els.interval.value = cfg.interval;
+      if(cfg.limit) els.limit.value = cfg.limit;
+      if(cfg.poll) els.poll.value = cfg.poll;
+      if(cfg.apiKey){ els.apiKey.value = cfg.apiKey; els.apiSecret.value = cfg.apiSecret || ""; els.saveKey.checked = true; }
+    }catch(e){ /* ignore corrupt storage */ }
+  }
+  function persistConfigIfNeeded(){
+    if(els.saveKey.checked){
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        contract: els.contract.value, interval: els.interval.value, limit: els.limit.value,
+        poll: els.poll.value, apiKey: els.apiKey.value, apiSecret: els.apiSecret.value
+      }));
+    } else {
+      localStorage.removeItem(LS_KEY);
+    }
+  }
+
+  // ---------- status / error ----------
+  function setStatus(text, ok){
+    els.statusText.textContent = text;
+    els.statusDot.className = "status-dot" + (ok === true ? " ok" : ok === false ? " err" : "");
+  }
+  function showError(msg){
+    els.errorBox.style.display = "block";
+    els.errorBox.textContent = msg;
+  }
+  function clearError(){
+    els.errorBox.style.display = "none";
+    els.errorBox.textContent = "";
+  }
+
+  // ---------- crypto helpers (Gate.io v4 signing) ----------
+  function bufToHex(buf){
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  async function sha512Hex(message){
+    const digest = await crypto.subtle.digest("SHA-512", new TextEncoder().encode(message));
+    return bufToHex(digest);
+  }
+  async function hmacSha512Hex(secret, message){
+    const key = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-512" }, false, ["sign"]
+    );
+    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+    return bufToHex(sig);
+  }
+
+  // ---------- REST calls ----------
+  async function fetchJson(url, opts){
+    const res = await fetch(url, opts);
+    if(!res.ok){
+      const body = await res.text().catch(() => "");
+      throw new Error(`요청 실패 ${res.status} ${res.statusText} - ${url}\n${body.slice(0,300)}`);
+    }
+    return res.json();
+  }
+
+  async function fetchTicker(settle, contract){
+    const url = `${REST_BASE}/api/v4/futures/${settle}/tickers?contract=${encodeURIComponent(contract)}`;
+    const data = await fetchJson(url);
+    if(!Array.isArray(data) || data.length === 0) throw new Error("티커 데이터 없음 (계약명 확인 필요)");
+    return data[0];
+  }
+
+  async function fetchCandles(settle, contract, interval, limit){
+    const url = `${REST_BASE}/api/v4/futures/${settle}/candlesticks?contract=${encodeURIComponent(contract)}&interval=${interval}&limit=${limit}`;
+    const data = await fetchJson(url);
+    if(!Array.isArray(data) || data.length === 0) throw new Error("캔들 데이터 없음 (계약명/간격 확인 필요)");
+    return data.map(c => ({
+      t: Number(c.t), o: parseFloat(c.o), h: parseFloat(c.h), l: parseFloat(c.l), c: parseFloat(c.c)
+    })).sort((a,b) => a.t - b.t);
+  }
+
+  async function fetchBalance(settle, apiKey, apiSecret){
+    const path = `/api/v4/futures/${settle}/accounts`;
+    const query = "";
+    const ts = Math.floor(Date.now() / 1000).toString();
+    const bodyHash = await sha512Hex("");
+    const signStr = `GET\n${path}\n${query}\n${bodyHash}\n${ts}`;
+    const sign = await hmacSha512Hex(apiSecret, signStr);
+    const res = await fetch(`${REST_BASE}${path}`, {
+      method: "GET",
+      headers: { "KEY": apiKey, "Timestamp": ts, "SIGN": sign, "Accept": "application/json" }
+    });
+    if(!res.ok) throw new Error(`잔고 조회 실패 ${res.status} (키 권한/CORS 확인)`);
+    return res.json();
+  }
+
+  // ---------- indicators ----------
+  function sma(arr, period, endIdx){
+    let sum = 0;
+    for(let i = endIdx - period + 1; i <= endIdx; i++) sum += arr[i];
+    return sum / period;
+  }
+  function stdevPop(arr, period, endIdx, mean){
+    let sum = 0;
+    for(let i = endIdx - period + 1; i <= endIdx; i++){ const d = arr[i] - mean; sum += d*d; }
+    return Math.sqrt(sum / period);
+  }
+  function bollingerBands(closes, period, mult){
+    const n = closes.length - 1;
+    const mid = sma(closes, period, n);
+    const sd = stdevPop(closes, period, n, mid);
+    const upper = mid + mult*sd;
+    const lower = mid - mult*sd;
+    const price = closes[n];
+    const percentB = (upper === lower) ? 0.5 : (price - lower) / (upper - lower);
+    return { mid, upper, lower, percentB, width: (upper-lower)/mid };
+  }
+
+  function highestHigh(highs, endIdx, period){
+    let m = -Infinity;
+    for(let i = endIdx - period + 1; i <= endIdx; i++) if(highs[i] > m) m = highs[i];
+    return m;
+  }
+  function lowestLow(lows, endIdx, period){
+    let m = Infinity;
+    for(let i = endIdx - period + 1; i <= endIdx; i++) if(lows[i] < m) m = lows[i];
+    return m;
+  }
+  function ichimoku(highs, lows, closes, tenkanP, kijunP, senkouP){
+    const n = closes.length - 1;
+    const minNeeded = senkouP + kijunP;
+    if(n + 1 < minNeeded) throw new Error(`이치모쿠 계산에 캔들이 부족합니다. 최소 ${minNeeded}개 필요 (현재 ${n+1}개). 조회 개수를 늘리세요.`);
+
+    const tenkanAt = (i) => (highestHigh(highs,i,tenkanP) + lowestLow(lows,i,tenkanP)) / 2;
+    const kijunAt = (i) => (highestHigh(highs,i,kijunP) + lowestLow(lows,i,kijunP)) / 2;
+    const senkouBAt = (i) => (highestHigh(highs,i,senkouP) + lowestLow(lows,i,senkouP)) / 2;
+    const senkouAAt = (i) => (tenkanAt(i) + kijunAt(i)) / 2;
+
+    const tenkan = tenkanAt(n);
+    const kijun = kijunAt(n);
+
+    // cloud that currently sits under price was computed `kijunP` bars ago
+    const cloudIdx = n - kijunP;
+    const cloudA = senkouAAt(cloudIdx);
+    const cloudB = senkouBAt(cloudIdx);
+    const cloudTop = Math.max(cloudA, cloudB);
+    const cloudBottom = Math.min(cloudA, cloudB);
+
+    // cloud being formed now, which will project `kijunP` bars into the future
+    const futureA = senkouAAt(n);
+    const futureB = senkouBAt(n);
+
+    const price = closes[n];
+    let cloudPos = "inside";
+    if(price > cloudTop) cloudPos = "above";
+    else if(price < cloudBottom) cloudPos = "below";
+
+    // simplified chikou check: current close vs close `kijunP` bars ago
+    const chikouBullish = closes[n] > closes[n - kijunP];
+
+    return {
+      tenkan, kijun, cloudTop, cloudBottom, cloudPos,
+      tkCross: tenkan > kijun ? "bull" : (tenkan < kijun ? "bear" : "flat"),
+      futureCloudBull: futureA > futureB,
+      chikouBullish
+    };
+  }
+
+  function logReturns(closes, lookback){
+    const n = closes.length - 1;
+    const start = Math.max(1, n - lookback + 1);
+    const rets = [];
+    for(let i = start; i <= n; i++) rets.push(Math.log(closes[i] / closes[i-1]));
+    return rets;
+  }
+  function mean(arr){ return arr.reduce((a,b)=>a+b,0) / arr.length; }
+  function stdevSample(arr){
+    const m = mean(arr);
+    const v = arr.reduce((s,x)=>s+(x-m)*(x-m),0) / Math.max(1, arr.length-1);
+    return Math.sqrt(v);
+  }
+
+  function erf(x){
+    const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+    const sign = x < 0 ? -1 : 1;
+    x = Math.abs(x);
+    const t = 1/(1+p*x);
+    const y = 1 - ((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+    return sign*y;
+  }
+  function normCDF(z){ return 0.5*(1+erf(z/Math.SQRT2)); }
+
+  // ---------- rendering ----------
+  function fmt(n, digits){
+    if(n === null || n === undefined || isNaN(n)) return "-";
+    return n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function pct(n){ return (n*100).toFixed(2) + "%"; }
+
+  function drawChart(closes, bbSeries){
+    const canvas = els.chart;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    const n = closes.length;
+    const allVals = [];
+    for(let i=0;i<n;i++){
+      allVals.push(closes[i]);
+      if(bbSeries.upper[i] != null) allVals.push(bbSeries.upper[i]);
+      if(bbSeries.lower[i] != null) allVals.push(bbSeries.lower[i]);
+    }
+    const min = Math.min(...allVals), max = Math.max(...allVals);
+    const pad = (max-min)*0.05 || 1;
+    const yMin = min-pad, yMax = max+pad;
+    const x = (i) => (i/(n-1))*(w-10)+5;
+    const y = (v) => h - ((v-yMin)/(yMax-yMin))*(h-10) - 5;
+
+    function line(arr, color, width){
+      ctx.beginPath();
+      let started = false;
+      for(let i=0;i<n;i++){
+        if(arr[i] == null) continue;
+        const px = x(i), py = y(arr[i]);
+        if(!started){ ctx.moveTo(px,py); started = true; } else ctx.lineTo(px,py);
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+    }
+    line(bbSeries.upper, "rgba(76,139,245,0.5)", 1);
+    line(bbSeries.lower, "rgba(76,139,245,0.5)", 1);
+    line(bbSeries.mid, "rgba(139,152,169,0.6)", 1);
+    line(closes, "#e6edf3", 1.5);
+  }
+
+  function computeBbSeries(closes, period, mult){
+    const upper = [], lower = [], mid = [];
+    for(let i=0;i<closes.length;i++){
+      if(i < period-1){ upper.push(null); lower.push(null); mid.push(null); continue; }
+      const m = sma(closes, period, i);
+      const sd = stdevPop(closes, period, i, m);
+      mid.push(m); upper.push(m+mult*sd); lower.push(m-mult*sd);
+    }
+    return { upper, lower, mid };
+  }
+
+  // ---------- main compute + render ----------
+  function computeAndRender(candles, ticker){
+    const closes = candles.map(c => c.c);
+    const highs = candles.map(c => c.h);
+    const lows = candles.map(c => c.l);
+
+    // fold live last price into the forming candle for responsiveness
+    if(ticker && ticker.last){
+      const live = parseFloat(ticker.last);
+      const n = closes.length - 1;
+      closes[n] = live;
+      highs[n] = Math.max(highs[n], live);
+      lows[n] = Math.min(lows[n], live);
+    }
+
+    const bbPeriod = parseInt(els.bbPeriod.value, 10);
+    const bbMult = parseFloat(els.bbMult.value);
+    const tenkanP = parseInt(els.tenkan.value, 10);
+    const kijunP = parseInt(els.kijun.value, 10);
+    const senkouP = parseInt(els.senkou.value, 10);
+    const sigmaLookback = parseInt(els.sigmaLookback.value, 10);
+
+    const bb = bollingerBands(closes, bbPeriod, bbMult);
+    const ichi = ichimoku(highs, lows, closes, tenkanP, kijunP, senkouP);
+
+    // ---- price / ticker panel ----
+    const price = closes[closes.length-1];
+    els.lastPrice.textContent = fmt(price, price < 10 ? 4 : 2);
+    if(ticker){
+      const chgPct = parseFloat(ticker.change_percentage);
+      els.chg24h.textContent = (isNaN(chgPct) ? "-" : (chgPct>=0?"+":"") + chgPct.toFixed(2) + "%");
+      els.chg24h.className = "chg " + (chgPct >= 0 ? "up" : "down");
+      els.markPrice.textContent = fmt(parseFloat(ticker.mark_price), 4);
+      els.indexPrice.textContent = fmt(parseFloat(ticker.index_price), 4);
+      els.hi24Lo24.textContent = `${fmt(parseFloat(ticker.high_24h),4)} / ${fmt(parseFloat(ticker.low_24h),4)}`;
+    }
+
+    // ---- BB panel ----
+    els.bbMid.textContent = fmt(bb.mid, 4);
+    els.bbBand.textContent = `${fmt(bb.upper,4)} / ${fmt(bb.lower,4)}`;
+    els.bbPercentB.textContent = (bb.percentB*100).toFixed(1) + "%";
+    els.bbWidth.textContent = (bb.width*100).toFixed(2) + "%";
+
+    // ---- Ichimoku panel ----
+    els.ichiTK.textContent = `${fmt(ichi.tenkan,4)} / ${fmt(ichi.kijun,4)}`;
+    els.ichiCross.innerHTML = ichi.tkCross === "bull"
+      ? '<span class="tag up">골든(상승)</span>'
+      : ichi.tkCross === "bear" ? '<span class="tag down">데드(하락)</span>' : '<span class="tag flat">중립</span>';
+    els.ichiCloudPos.innerHTML = ichi.cloudPos === "above"
+      ? '<span class="tag up">구름 위 (강세)</span>'
+      : ichi.cloudPos === "below" ? '<span class="tag down">구름 아래 (약세)</span>' : '<span class="tag flat">구름 안 (혼조)</span>';
+    els.ichiFutureCloud.innerHTML = ichi.futureCloudBull
+      ? '<span class="tag up">향후 구름 강세 전환</span>' : '<span class="tag down">향후 구름 약세 전환</span>';
+
+    // ---- bias score ----
+    const bbSignal = Math.max(-1, Math.min(1, (bb.percentB - 0.5) * 2));
+    const ichiSubs = [
+      ichi.cloudPos === "above" ? 1 : ichi.cloudPos === "below" ? -1 : 0,
+      ichi.tkCross === "bull" ? 1 : ichi.tkCross === "bear" ? -1 : 0,
+      ichi.chikouBullish ? 1 : -1,
+    ];
+    const ichiSignal = mean(ichiSubs);
+    const bias = Math.max(-1, Math.min(1, 0.5*bbSignal + 0.5*ichiSignal));
+
+    // ---- volatility + probability ----
+    const rets = logReturns(closes, sigmaLookback);
+    const sigma = Math.max(1e-6, stdevSample(rets));
+    const k = 1.0; // tilt strength: full bias (+-1) shifts drift by one sigma
+    const mu = bias * sigma * k;
+    const threshold = 0.01;
+
+    const zUp = (threshold - mu) / sigma;
+    const zDown = (-threshold - mu) / sigma;
+    const pUp = 1 - normCDF(zUp);
+    const pDown = normCDF(zDown);
+    const pAny = pUp + pDown;
+    const dirUp = pAny > 0 ? (pUp / pAny) * 100 : 50;
+    const dirDown = 100 - dirUp;
+
+    els.probUpBar.style.width = dirUp + "%";
+    els.probDownBar.style.width = dirDown + "%";
+    els.probUpBar.textContent = dirUp.toFixed(1) + "%";
+    els.probDownBar.textContent = dirDown.toFixed(1) + "%";
+    els.probUpNum.textContent = dirUp.toFixed(1) + "%";
+    els.probDownNum.textContent = dirDown.toFixed(1) + "%";
+    els.probAnyNum.textContent = (pAny*100).toFixed(2) + "%";
+    els.sigmaNum.textContent = (sigma*100).toFixed(3) + "%";
+    els.biasNum.textContent = bias.toFixed(2);
+
+    // ---- chart ----
+    const bbSeries = computeBbSeries(closes, bbPeriod, bbMult);
+    drawChart(closes, bbSeries);
+  }
+
+  // ---------- polling loop ----------
+  async function tick(){
+    const settle = els.settle.value;
+    const contract = els.contract.value.trim().toUpperCase();
+    const interval = els.interval.value;
+    const limit = parseInt(els.limit.value, 10);
+
+    try{
+      setStatus("데이터 수신 중...");
+      const [ticker, candles] = await Promise.all([
+        fetchTicker(settle, contract),
+        fetchCandles(settle, contract, interval, limit),
+      ]);
+      computeAndRender(candles, ticker);
+      clearError();
+      setStatus("정상 · 마지막 갱신 " + new Date().toLocaleTimeString(), true);
+    }catch(e){
+      showError(String(e.message || e));
+      setStatus("오류", false);
+    }
+
+    // optional balance check every ~6th tick to reduce signed-request volume
+    tickCount++;
+    const apiKey = els.apiKey.value.trim();
+    const apiSecret = els.apiSecret.value.trim();
+    if(apiKey && apiSecret && tickCount % 6 === 1){
+      try{
+        const bal = await fetchBalance(settle, apiKey, apiSecret);
+        const avail = bal && bal.available !== undefined ? bal.available : (bal && bal.total);
+        els.balance.textContent = avail !== undefined ? fmt(parseFloat(avail), 2) + " USDT" : "-";
+      }catch(e){
+        els.balance.textContent = "조회 실패 (권한/CORS 확인)";
+      }
+    }
+  }
+
+  function start(){
+    stop();
+    persistConfigIfNeeded();
+    tickCount = 0;
+    tick();
+    const pollMs = Math.max(2, parseInt(els.poll.value, 10)) * 1000;
+    timer = setInterval(tick, pollMs);
+    els.btnStart.disabled = true;
+  }
+  function stop(){
+    if(timer){ clearInterval(timer); timer = null; }
+    els.btnStart.disabled = false;
+    setStatus("정지됨");
+  }
+
+  els.btnStart.addEventListener("click", start);
+  els.btnStop.addEventListener("click", stop);
+
+  loadSavedConfig();
+})();
+</script>
+</body>
+</html>
