@@ -148,6 +148,32 @@
     </div>
 
     <div class="panel">
+      <h2>멀티 타임프레임 개요 (20초 주기 갱신)</h2>
+      <div style="overflow-x:auto;">
+      <table id="mtfTable" style="width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap;">
+        <thead>
+          <tr style="color:var(--muted); text-align:left;">
+            <th style="padding:6px 8px;">간격</th>
+            <th style="padding:6px 8px;">가격</th>
+            <th style="padding:6px 8px;">BB %B</th>
+            <th style="padding:6px 8px;">구름대</th>
+            <th style="padding:6px 8px;">편향</th>
+            <th style="padding:6px 8px;">상승%</th>
+            <th style="padding:6px 8px;">하락%</th>
+            <th style="padding:6px 8px;">1%+발생%</th>
+          </tr>
+        </thead>
+        <tbody id="mtfBody">
+          <tr><td style="padding:6px 8px; color:var(--muted);" colspan="8">시작 버튼을 누르면 표시됩니다.</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-top:8px;">
+        여러 타임프레임의 편향/방향이 같은 쪽으로 겹칠수록(컨플루언스) 신호가 더 신뢰할 만합니다. 각 타임프레임은 좌측 "지표 파라미터" 설정을 동일하게 적용해 계산합니다.
+      </div>
+    </div>
+
+    <div class="panel">
       <h2>볼린저 밴드</h2>
       <div class="metrics">
         <div class="metric"><div class="k">중심선(SMA)</div><div class="v" id="bbMid">-</div></div>
@@ -220,10 +246,16 @@
     ichiTK: $("ichiTK"), ichiCross: $("ichiCross"), ichiCloudPos: $("ichiCloudPos"), ichiFutureCloud: $("ichiFutureCloud"),
     probUpBar: $("probUpBar"), probDownBar: $("probDownBar"), probUpNum: $("probUpNum"), probDownNum: $("probDownNum"),
     probAnyNum: $("probAnyNum"), sigmaNum: $("sigmaNum"), biasNum: $("biasNum"),
-    chart: $("chart"),
+    chart: $("chart"), mtfBody: $("mtfBody"),
   };
 
+  const MTF_INTERVALS = ["10s", "1m", "5m", "15m", "1h", "4h", "1d"];
+  const MTF_LIMIT = 100;
+  const MTF_REFRESH_MS = 20000; // matches the user's ~20s decision cadence
+
   let timer = null;
+  let lastMtfRefresh = 0;
+  let mtfInFlight = false;
 
   // ---------- persisted config ----------
   const LS_KEY = "soxl_dashboard_cfg_v1";
@@ -434,6 +466,47 @@
     return { upper, lower, mid };
   }
 
+  // ---------- shared signal computation (used by main panel + multi-timeframe table) ----------
+  function getIndicatorParams(){
+    return {
+      bbPeriod: parseInt(els.bbPeriod.value, 10),
+      bbMult: parseFloat(els.bbMult.value),
+      tenkanP: parseInt(els.tenkan.value, 10),
+      kijunP: parseInt(els.kijun.value, 10),
+      senkouP: parseInt(els.senkou.value, 10),
+      sigmaLookback: parseInt(els.sigmaLookback.value, 10),
+    };
+  }
+
+  function computeSignal(closes, highs, lows, p){
+    const bb = bollingerBands(closes, p.bbPeriod, p.bbMult);
+    const ichi = ichimoku(highs, lows, closes, p.tenkanP, p.kijunP, p.senkouP);
+
+    const bbSignal = Math.max(-1, Math.min(1, (bb.percentB - 0.5) * 2));
+    const ichiSubs = [
+      ichi.cloudPos === "above" ? 1 : ichi.cloudPos === "below" ? -1 : 0,
+      ichi.tkCross === "bull" ? 1 : ichi.tkCross === "bear" ? -1 : 0,
+      ichi.chikouBullish ? 1 : -1,
+    ];
+    const ichiSignal = mean(ichiSubs);
+    const bias = Math.max(-1, Math.min(1, 0.5*bbSignal + 0.5*ichiSignal));
+
+    const rets = logReturns(closes, p.sigmaLookback);
+    const sigma = Math.max(1e-6, stdevSample(rets));
+    const mu = bias * sigma; // tilt strength: full bias (+-1) shifts drift by one sigma
+    const threshold = 0.01;
+
+    const zUp = (threshold - mu) / sigma;
+    const zDown = (-threshold - mu) / sigma;
+    const pUp = 1 - normCDF(zUp);
+    const pDown = normCDF(zDown);
+    const pAny = pUp + pDown;
+    const dirUp = pAny > 0 ? (pUp / pAny) * 100 : 50;
+    const dirDown = 100 - dirUp;
+
+    return { bb, ichi, bias, sigma, mu, pAny, dirUp, dirDown, price: closes[closes.length-1] };
+  }
+
   // ---------- main compute + render ----------
   function computeAndRender(candles, ticker){
     const closes = candles.map(c => c.c);
@@ -449,18 +522,10 @@
       lows[n] = Math.min(lows[n], live);
     }
 
-    const bbPeriod = parseInt(els.bbPeriod.value, 10);
-    const bbMult = parseFloat(els.bbMult.value);
-    const tenkanP = parseInt(els.tenkan.value, 10);
-    const kijunP = parseInt(els.kijun.value, 10);
-    const senkouP = parseInt(els.senkou.value, 10);
-    const sigmaLookback = parseInt(els.sigmaLookback.value, 10);
-
-    const bb = bollingerBands(closes, bbPeriod, bbMult);
-    const ichi = ichimoku(highs, lows, closes, tenkanP, kijunP, senkouP);
+    const params = getIndicatorParams();
+    const { bb, ichi, bias, sigma, pAny, dirUp, dirDown, price } = computeSignal(closes, highs, lows, params);
 
     // ---- price / ticker panel ----
-    const price = closes[closes.length-1];
     els.lastPrice.textContent = fmt(price, price < 10 ? 4 : 2);
     if(ticker){
       const chgPct = parseFloat(ticker.change_percentage);
@@ -488,31 +553,7 @@
     els.ichiFutureCloud.innerHTML = ichi.futureCloudBull
       ? '<span class="tag up">향후 구름 강세 전환</span>' : '<span class="tag down">향후 구름 약세 전환</span>';
 
-    // ---- bias score ----
-    const bbSignal = Math.max(-1, Math.min(1, (bb.percentB - 0.5) * 2));
-    const ichiSubs = [
-      ichi.cloudPos === "above" ? 1 : ichi.cloudPos === "below" ? -1 : 0,
-      ichi.tkCross === "bull" ? 1 : ichi.tkCross === "bear" ? -1 : 0,
-      ichi.chikouBullish ? 1 : -1,
-    ];
-    const ichiSignal = mean(ichiSubs);
-    const bias = Math.max(-1, Math.min(1, 0.5*bbSignal + 0.5*ichiSignal));
-
-    // ---- volatility + probability ----
-    const rets = logReturns(closes, sigmaLookback);
-    const sigma = Math.max(1e-6, stdevSample(rets));
-    const k = 1.0; // tilt strength: full bias (+-1) shifts drift by one sigma
-    const mu = bias * sigma * k;
-    const threshold = 0.01;
-
-    const zUp = (threshold - mu) / sigma;
-    const zDown = (-threshold - mu) / sigma;
-    const pUp = 1 - normCDF(zUp);
-    const pDown = normCDF(zDown);
-    const pAny = pUp + pDown;
-    const dirUp = pAny > 0 ? (pUp / pAny) * 100 : 50;
-    const dirDown = 100 - dirUp;
-
+    // ---- probability panel ----
     els.probUpBar.style.width = dirUp + "%";
     els.probDownBar.style.width = dirDown + "%";
     els.probUpBar.textContent = dirUp.toFixed(1) + "%";
@@ -524,8 +565,70 @@
     els.biasNum.textContent = bias.toFixed(2);
 
     // ---- chart ----
-    const bbSeries = computeBbSeries(closes, bbPeriod, bbMult);
+    const bbSeries = computeBbSeries(closes, params.bbPeriod, params.bbMult);
     drawChart(closes, bbSeries);
+  }
+
+  // ---------- multi-timeframe overview ----------
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  }
+
+  function renderMtfTable(rows){
+    els.mtfBody.innerHTML = rows.map(row => {
+      if(row.error){
+        return `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:6px 8px; font-weight:600;">${row.iv}</td>
+          <td colspan="7" style="padding:6px 8px; color:var(--muted);" title="${escapeHtml(row.error)}">데이터 부족/오류</td>
+        </tr>`;
+      }
+      const s = row.sig;
+      const biasColor = s.bias > 0.15 ? "var(--up)" : s.bias < -0.15 ? "var(--down)" : "var(--muted)";
+      const cloudTag = s.ichi.cloudPos === "above" ? '<span class="tag up">위</span>'
+        : s.ichi.cloudPos === "below" ? '<span class="tag down">아래</span>' : '<span class="tag flat">안</span>';
+      return `<tr style="border-top:1px solid var(--border);">
+        <td style="padding:6px 8px; font-weight:600;">${row.iv}</td>
+        <td style="padding:6px 8px;">${fmt(s.price, s.price < 10 ? 4 : 2)}</td>
+        <td style="padding:6px 8px;">${(s.bb.percentB*100).toFixed(0)}%</td>
+        <td style="padding:6px 8px;">${cloudTag}</td>
+        <td style="padding:6px 8px; color:${biasColor}; font-weight:600;">${s.bias.toFixed(2)}</td>
+        <td style="padding:6px 8px; color:var(--up);">${s.dirUp.toFixed(0)}%</td>
+        <td style="padding:6px 8px; color:var(--down);">${s.dirDown.toFixed(0)}%</td>
+        <td style="padding:6px 8px;">${(s.pAny*100).toFixed(1)}%</td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function refreshMultiTimeframe(){
+    if(mtfInFlight) return;
+    mtfInFlight = true;
+    try{
+      const settle = els.settle.value;
+      const contract = els.contract.value.trim().toUpperCase();
+      const params = getIndicatorParams();
+
+      const results = await Promise.allSettled(
+        MTF_INTERVALS.map(iv => fetchCandles(settle, contract, iv, MTF_LIMIT))
+      );
+
+      const rows = results.map((r, idx) => {
+        const iv = MTF_INTERVALS[idx];
+        if(r.status !== "fulfilled") return { iv, error: r.reason ? String(r.reason.message || r.reason) : "요청 실패" };
+        const candles = r.value;
+        const closes = candles.map(c => c.c), highs = candles.map(c => c.h), lows = candles.map(c => c.l);
+        try{
+          return { iv, sig: computeSignal(closes, highs, lows, params) };
+        }catch(e){
+          return { iv, error: e.message || String(e) };
+        }
+      });
+
+      renderMtfTable(rows);
+    }catch(e){
+      console.error("[SOXL dashboard] multi-timeframe refresh failed:", e);
+    }finally{
+      mtfInFlight = false;
+    }
   }
 
   // ---------- polling loop ----------
@@ -548,11 +651,18 @@
       showError(String(e.message || e));
       setStatus("오류", false);
     }
+
+    const now = Date.now();
+    if(now - lastMtfRefresh >= MTF_REFRESH_MS){
+      lastMtfRefresh = now;
+      refreshMultiTimeframe();
+    }
   }
 
   function start(){
     stop();
     persistConfig();
+    lastMtfRefresh = 0;
     tick();
     const pollMs = Math.max(2, parseInt(els.poll.value, 10)) * 1000;
     timer = setInterval(tick, pollMs);
