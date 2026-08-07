@@ -126,27 +126,6 @@
       <input type="number" id="cfgSigmaLookback" value="50" min="20" max="300">
     </div>
 
-    <div class="panel">
-      <h2>Gate.io API 키 (선택 · 잔고 조회 전용)</h2>
-      <div class="note">
-        가격/지표/확률 계산은 공개 API만 사용하므로 키가 없어도 전부 동작합니다.
-        아래 키는 <b>선물 계좌 잔고 조회(GET, 읽기 전용)</b>에만 사용되며 주문은 절대 실행하지 않습니다.
-        Gate.io에서 <b>"거래/출금 권한 없는 읽기 전용 키"</b>를 발급해 사용하세요.
-        키는 이 브라우저 안에서만 서명·전송되며 외부 서버로 전송되지 않습니다.
-      </div>
-      <label>API Key</label>
-      <input type="text" id="cfgApiKey" autocomplete="off">
-      <label>API Secret</label>
-      <input type="password" id="cfgApiSecret" autocomplete="off">
-      <div class="checkbox-row">
-        <input type="checkbox" id="cfgSaveKey">
-        <label style="margin:0;" for="cfgSaveKey">이 브라우저(localStorage)에 저장 (공용 PC에서는 비권장)</label>
-      </div>
-      <div class="btn-row">
-        <button class="btn-primary" id="btnTestKey">키 테스트 (잔고 조회)</button>
-      </div>
-      <div class="error-box" id="keyErrorBox"></div>
-    </div>
   </div>
 
   <!-- RIGHT: dashboard -->
@@ -161,7 +140,6 @@
         <div class="metric"><div class="k">마크 가격</div><div class="v" id="markPrice">-</div></div>
         <div class="metric"><div class="k">지수 가격</div><div class="v" id="indexPrice">-</div></div>
         <div class="metric"><div class="k">24h 고가 / 저가</div><div class="v" id="hi24Lo24">-</div></div>
-        <div class="metric"><div class="k">선물 계좌 잔고 (USDT)</div><div class="v" id="balance">키 미입력</div></div>
       </div>
     </div>
 
@@ -213,7 +191,7 @@
   이 대시보드는 투자 조언이 아니며, 볼린저 밴드/이치모쿠 지표를 정규분포 근사와 결합한 <b>휴리스틱 추정치</b>입니다.
   실제 시장은 정규분포를 따르지 않고, 과거 지표 패턴이 미래 확률을 보장하지 않습니다. 참고용으로만 사용하세요.
   자동 매매/주문 기능은 포함되어 있지 않으며, 모든 매매 판단과 실행은 사용자 본인의 책임입니다.
-  브라우저에서 Gate.io API로의 요청이 CORS 정책에 막히는 경우, 잔고 조회만 실패하고 시세/지표/확률 계산은 정상 동작합니다.
+  이 도구는 Gate.io 공개 시세 API만 사용하며 API 키를 입력받지 않습니다.
 </div>
 
 <script>
@@ -228,11 +206,10 @@
     contract: $("cfgContract"), settle: $("cfgSettle"), interval: $("cfgInterval"), limit: $("cfgLimit"),
     poll: $("cfgPoll"), bbPeriod: $("cfgBbPeriod"), bbMult: $("cfgBbMult"),
     tenkan: $("cfgTenkan"), kijun: $("cfgKijun"), senkou: $("cfgSenkou"), sigmaLookback: $("cfgSigmaLookback"),
-    apiKey: $("cfgApiKey"), apiSecret: $("cfgApiSecret"), saveKey: $("cfgSaveKey"),
-    btnStart: $("btnStart"), btnStop: $("btnStop"), btnTestKey: $("btnTestKey"),
-    statusDot: $("statusDot"), statusText: $("statusText"), errorBox: $("errorBox"), keyErrorBox: $("keyErrorBox"),
+    btnStart: $("btnStart"), btnStop: $("btnStop"),
+    statusDot: $("statusDot"), statusText: $("statusText"), errorBox: $("errorBox"),
     lastPrice: $("lastPrice"), chg24h: $("chg24h"), markPrice: $("markPrice"), indexPrice: $("indexPrice"),
-    hi24Lo24: $("hi24Lo24"), balance: $("balance"),
+    hi24Lo24: $("hi24Lo24"),
     bbMid: $("bbMid"), bbBand: $("bbBand"), bbPercentB: $("bbPercentB"), bbWidth: $("bbWidth"),
     ichiTK: $("ichiTK"), ichiCross: $("ichiCross"), ichiCloudPos: $("ichiCloudPos"), ichiFutureCloud: $("ichiFutureCloud"),
     probUpBar: $("probUpBar"), probDownBar: $("probDownBar"), probUpNum: $("probUpNum"), probDownNum: $("probDownNum"),
@@ -241,7 +218,6 @@
   };
 
   let timer = null;
-  let tickCount = 0;
 
   // ---------- persisted config ----------
   const LS_KEY = "soxl_dashboard_cfg_v1";
@@ -254,18 +230,13 @@
       if(cfg.interval) els.interval.value = cfg.interval;
       if(cfg.limit) els.limit.value = cfg.limit;
       if(cfg.poll) els.poll.value = cfg.poll;
-      if(cfg.apiKey){ els.apiKey.value = cfg.apiKey; els.apiSecret.value = cfg.apiSecret || ""; els.saveKey.checked = true; }
     }catch(e){ /* ignore corrupt storage */ }
   }
-  function persistConfigIfNeeded(){
-    if(els.saveKey.checked){
-      localStorage.setItem(LS_KEY, JSON.stringify({
-        contract: els.contract.value, interval: els.interval.value, limit: els.limit.value,
-        poll: els.poll.value, apiKey: els.apiKey.value, apiSecret: els.apiSecret.value
-      }));
-    } else {
-      localStorage.removeItem(LS_KEY);
-    }
+  function persistConfig(){
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      contract: els.contract.value, interval: els.interval.value, limit: els.limit.value,
+      poll: els.poll.value
+    }));
   }
 
   // ---------- status / error ----------
@@ -280,22 +251,6 @@
   function clearError(){
     els.errorBox.style.display = "none";
     els.errorBox.textContent = "";
-  }
-
-  // ---------- crypto helpers (Gate.io v4 signing) ----------
-  function bufToHex(buf){
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-  }
-  async function sha512Hex(message){
-    const digest = await crypto.subtle.digest("SHA-512", new TextEncoder().encode(message));
-    return bufToHex(digest);
-  }
-  async function hmacSha512Hex(secret, message){
-    const key = await crypto.subtle.importKey(
-      "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-512" }, false, ["sign"]
-    );
-    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
-    return bufToHex(sig);
   }
 
   // ---------- REST calls ----------
@@ -322,24 +277,6 @@
     return data.map(c => ({
       t: Number(c.t), o: parseFloat(c.o), h: parseFloat(c.h), l: parseFloat(c.l), c: parseFloat(c.c)
     })).sort((a,b) => a.t - b.t);
-  }
-
-  async function fetchBalance(settle, apiKey, apiSecret){
-    const path = `/api/v4/futures/${settle}/accounts`;
-    const query = "";
-    const ts = Math.floor(Date.now() / 1000).toString();
-    const bodyHash = await sha512Hex("");
-    const signStr = `GET\n${path}\n${query}\n${bodyHash}\n${ts}`;
-    const sign = await hmacSha512Hex(apiSecret, signStr);
-    const res = await fetch(`${REST_BASE}${path}`, {
-      method: "GET",
-      headers: { "KEY": apiKey, "Timestamp": ts, "SIGN": sign, "Accept": "application/json" }
-    });
-    if(!res.ok){
-      const body = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status} ${res.statusText}\n${body.slice(0,400)}`);
-    }
-    return res.json();
   }
 
   // ---------- indicators ----------
@@ -605,65 +542,11 @@
       showError(String(e.message || e));
       setStatus("오류", false);
     }
-
-    // optional balance check every ~6th tick to reduce signed-request volume
-    tickCount++;
-    const apiKey = els.apiKey.value.trim();
-    const apiSecret = els.apiSecret.value.trim();
-    if(apiKey && apiSecret && tickCount % 6 === 1){
-      try{
-        const bal = await fetchBalance(settle, apiKey, apiSecret);
-        const avail = bal && bal.available !== undefined ? bal.available : (bal && bal.total);
-        els.balance.textContent = avail !== undefined ? fmt(parseFloat(avail), 2) + " USDT" : "-";
-      }catch(e){
-        console.error("[SOXL dashboard] balance fetch failed:", e);
-        els.balance.textContent = "조회 실패 (아래 '키 테스트' 버튼으로 원인 확인)";
-      }
-    }
   }
-
-  async function testKey(){
-    const settle = els.settle.value;
-    const apiKey = els.apiKey.value.trim();
-    const apiSecret = els.apiSecret.value.trim();
-    els.keyErrorBox.style.display = "none";
-    els.keyErrorBox.textContent = "";
-    if(!apiKey || !apiSecret){
-      els.keyErrorBox.style.display = "block";
-      els.keyErrorBox.textContent = "API Key / Secret을 먼저 입력하세요.";
-      return;
-    }
-    els.btnTestKey.disabled = true;
-    els.btnTestKey.textContent = "테스트 중...";
-    try{
-      const bal = await fetchBalance(settle, apiKey, apiSecret);
-      const avail = bal && bal.available !== undefined ? bal.available : (bal && bal.total);
-      els.balance.textContent = avail !== undefined ? fmt(parseFloat(avail), 2) + " USDT" : "-";
-      els.keyErrorBox.style.display = "block";
-      els.keyErrorBox.style.color = "#8fe3c0";
-      els.keyErrorBox.textContent = "성공: 키가 정상 동작합니다.";
-    }catch(e){
-      console.error("[SOXL dashboard] key test failed:", e);
-      els.keyErrorBox.style.display = "block";
-      els.keyErrorBox.style.color = "";
-      let hint = "";
-      const msg = String(e.message || e);
-      if(/Failed to fetch|NetworkError|TypeError/i.test(msg)){
-        hint = "\n(브라우저 콘솔(F12)에 CORS 관련 문구가 있는지 확인하세요. Gate.io가 이 요청 헤더에 대해 브라우저 CORS를 허용하지 않으면 상태코드 없이 이렇게 실패합니다.)";
-      } else if(/HTTP 401|HTTP 403/.test(msg)){
-        hint = "\n(서명 오류, 키/시크릿 오타, 또는 키의 IP 화이트리스트 설정 문제일 수 있습니다.)";
-      }
-      els.keyErrorBox.textContent = msg + hint;
-    }
-    els.btnTestKey.disabled = false;
-    els.btnTestKey.textContent = "키 테스트 (잔고 조회)";
-  }
-  els.btnTestKey.addEventListener("click", testKey);
 
   function start(){
     stop();
-    persistConfigIfNeeded();
-    tickCount = 0;
+    persistConfig();
     tick();
     const pollMs = Math.max(2, parseInt(els.poll.value, 10)) * 1000;
     timer = setInterval(tick, pollMs);
