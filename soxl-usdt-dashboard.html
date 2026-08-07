@@ -142,6 +142,10 @@
         <input type="checkbox" id="cfgSaveKey">
         <label style="margin:0;" for="cfgSaveKey">이 브라우저(localStorage)에 저장 (공용 PC에서는 비권장)</label>
       </div>
+      <div class="btn-row">
+        <button class="btn-primary" id="btnTestKey">키 테스트 (잔고 조회)</button>
+      </div>
+      <div class="error-box" id="keyErrorBox"></div>
     </div>
   </div>
 
@@ -225,8 +229,8 @@
     poll: $("cfgPoll"), bbPeriod: $("cfgBbPeriod"), bbMult: $("cfgBbMult"),
     tenkan: $("cfgTenkan"), kijun: $("cfgKijun"), senkou: $("cfgSenkou"), sigmaLookback: $("cfgSigmaLookback"),
     apiKey: $("cfgApiKey"), apiSecret: $("cfgApiSecret"), saveKey: $("cfgSaveKey"),
-    btnStart: $("btnStart"), btnStop: $("btnStop"),
-    statusDot: $("statusDot"), statusText: $("statusText"), errorBox: $("errorBox"),
+    btnStart: $("btnStart"), btnStop: $("btnStop"), btnTestKey: $("btnTestKey"),
+    statusDot: $("statusDot"), statusText: $("statusText"), errorBox: $("errorBox"), keyErrorBox: $("keyErrorBox"),
     lastPrice: $("lastPrice"), chg24h: $("chg24h"), markPrice: $("markPrice"), indexPrice: $("indexPrice"),
     hi24Lo24: $("hi24Lo24"), balance: $("balance"),
     bbMid: $("bbMid"), bbBand: $("bbBand"), bbPercentB: $("bbPercentB"), bbWidth: $("bbWidth"),
@@ -331,7 +335,10 @@
       method: "GET",
       headers: { "KEY": apiKey, "Timestamp": ts, "SIGN": sign, "Accept": "application/json" }
     });
-    if(!res.ok) throw new Error(`잔고 조회 실패 ${res.status} (키 권한/CORS 확인)`);
+    if(!res.ok){
+      const body = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} ${res.statusText}\n${body.slice(0,400)}`);
+    }
     return res.json();
   }
 
@@ -609,10 +616,49 @@
         const avail = bal && bal.available !== undefined ? bal.available : (bal && bal.total);
         els.balance.textContent = avail !== undefined ? fmt(parseFloat(avail), 2) + " USDT" : "-";
       }catch(e){
-        els.balance.textContent = "조회 실패 (권한/CORS 확인)";
+        console.error("[SOXL dashboard] balance fetch failed:", e);
+        els.balance.textContent = "조회 실패 (아래 '키 테스트' 버튼으로 원인 확인)";
       }
     }
   }
+
+  async function testKey(){
+    const settle = els.settle.value;
+    const apiKey = els.apiKey.value.trim();
+    const apiSecret = els.apiSecret.value.trim();
+    els.keyErrorBox.style.display = "none";
+    els.keyErrorBox.textContent = "";
+    if(!apiKey || !apiSecret){
+      els.keyErrorBox.style.display = "block";
+      els.keyErrorBox.textContent = "API Key / Secret을 먼저 입력하세요.";
+      return;
+    }
+    els.btnTestKey.disabled = true;
+    els.btnTestKey.textContent = "테스트 중...";
+    try{
+      const bal = await fetchBalance(settle, apiKey, apiSecret);
+      const avail = bal && bal.available !== undefined ? bal.available : (bal && bal.total);
+      els.balance.textContent = avail !== undefined ? fmt(parseFloat(avail), 2) + " USDT" : "-";
+      els.keyErrorBox.style.display = "block";
+      els.keyErrorBox.style.color = "#8fe3c0";
+      els.keyErrorBox.textContent = "성공: 키가 정상 동작합니다.";
+    }catch(e){
+      console.error("[SOXL dashboard] key test failed:", e);
+      els.keyErrorBox.style.display = "block";
+      els.keyErrorBox.style.color = "";
+      let hint = "";
+      const msg = String(e.message || e);
+      if(/Failed to fetch|NetworkError|TypeError/i.test(msg)){
+        hint = "\n(브라우저 콘솔(F12)에 CORS 관련 문구가 있는지 확인하세요. Gate.io가 이 요청 헤더에 대해 브라우저 CORS를 허용하지 않으면 상태코드 없이 이렇게 실패합니다.)";
+      } else if(/HTTP 401|HTTP 403/.test(msg)){
+        hint = "\n(서명 오류, 키/시크릿 오타, 또는 키의 IP 화이트리스트 설정 문제일 수 있습니다.)";
+      }
+      els.keyErrorBox.textContent = msg + hint;
+    }
+    els.btnTestKey.disabled = false;
+    els.btnTestKey.textContent = "키 테스트 (잔고 조회)";
+  }
+  els.btnTestKey.addEventListener("click", testKey);
 
   function start(){
     stop();
