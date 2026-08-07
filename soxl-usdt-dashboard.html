@@ -199,7 +199,7 @@
     </div>
 
     <div class="panel">
-      <h2>1% 변동 방향 확률 (다음 캔들, 지표 기반 휴리스틱)</h2>
+      <h2>방향 확률 (지표 편향 기반 휴리스틱)</h2>
       <div class="prob-wrap">
         <div class="prob-bar-outer">
           <div class="prob-bar-up" id="probUpBar">0%</div>
@@ -209,9 +209,13 @@
       <div class="prob-nums" style="margin-top:12px;">
         <div>상승 확률<b id="probUpNum" style="color:var(--up);">-</b></div>
         <div>하락 확률<b id="probDownNum" style="color:var(--down);">-</b></div>
-        <div>1%+ 변동 발생 확률<b id="probAnyNum">-</b></div>
+        <div>1%+ 변동 발생 확률(이 캔들, 참고용)<b id="probAnyNum">-</b></div>
         <div>변동성(σ, 캔들당)<b id="sigmaNum">-</b></div>
         <div>편향 점수(-1~+1)<b id="biasNum">-</b></div>
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-top:10px;">
+        상승/하락 확률은 지표 편향만으로 계산되며, 아래 "1%+ 변동 발생 확률"과는 독립적입니다.
+        짧은 타임프레임일수록 캔들당 변동성이 1%보다 훨씬 작아 이 값이 매우 낮게(때로 &lt;0.01%) 나오는 게 정상입니다 — 실제로 1%가 잘 안 나온다는 뜻입니다.
       </div>
     </div>
   </div>
@@ -420,6 +424,15 @@
   }
   function pct(n){ return (n*100).toFixed(2) + "%"; }
 
+  // Reports very small probabilities honestly instead of rounding them down to a bare "0.00%".
+  function fmtSmallPct(frac, digits){
+    const v = frac * 100;
+    if(v <= 0) return "≈0%";
+    const floor = Math.pow(10, -digits);
+    if(v < floor) return "<" + floor.toFixed(digits) + "%";
+    return v.toFixed(digits) + "%";
+  }
+
   function drawChart(closes, bbSeries){
     const canvas = els.chart;
     const ctx = canvas.getContext("2d");
@@ -491,18 +504,25 @@
     const ichiSignal = mean(ichiSubs);
     const bias = Math.max(-1, Math.min(1, 0.5*bbSignal + 0.5*ichiSignal));
 
+    // Direction: mapped straight from the bounded bias score via a normal CDF, independent
+    // of the 1% threshold. This never degenerates - unlike ratio-of-two-tail-probabilities,
+    // which blows up to 0%/100% whenever the 1% threshold sits many sigmas away from the
+    // per-candle volatility (always true on short timeframes like 10s/1m).
+    const BIAS_SCALE = 1.5; // bias=+-1 -> ~93%/7% direction split
+    const dirUp = normCDF(bias * BIAS_SCALE) * 100;
+    const dirDown = 100 - dirUp;
+
+    // Magnitude: genuine probability that THIS candle moves >=1%, reported honestly even
+    // when tiny (short timeframes) rather than folded into the direction split above.
     const rets = logReturns(closes, p.sigmaLookback);
     const sigma = Math.max(1e-6, stdevSample(rets));
     const mu = bias * sigma; // tilt strength: full bias (+-1) shifts drift by one sigma
     const threshold = 0.01;
-
     const zUp = (threshold - mu) / sigma;
     const zDown = (-threshold - mu) / sigma;
     const pUp = 1 - normCDF(zUp);
     const pDown = normCDF(zDown);
     const pAny = pUp + pDown;
-    const dirUp = pAny > 0 ? (pUp / pAny) * 100 : 50;
-    const dirDown = 100 - dirUp;
 
     return { bb, ichi, bias, sigma, mu, pAny, dirUp, dirDown, price: closes[closes.length-1] };
   }
@@ -560,7 +580,7 @@
     els.probDownBar.textContent = dirDown.toFixed(1) + "%";
     els.probUpNum.textContent = dirUp.toFixed(1) + "%";
     els.probDownNum.textContent = dirDown.toFixed(1) + "%";
-    els.probAnyNum.textContent = (pAny*100).toFixed(2) + "%";
+    els.probAnyNum.textContent = fmtSmallPct(pAny, 2);
     els.sigmaNum.textContent = (sigma*100).toFixed(3) + "%";
     els.biasNum.textContent = bias.toFixed(2);
 
@@ -594,7 +614,7 @@
         <td style="padding:6px 8px; color:${biasColor}; font-weight:600;">${s.bias.toFixed(2)}</td>
         <td style="padding:6px 8px; color:var(--up);">${s.dirUp.toFixed(0)}%</td>
         <td style="padding:6px 8px; color:var(--down);">${s.dirDown.toFixed(0)}%</td>
-        <td style="padding:6px 8px;">${(s.pAny*100).toFixed(1)}%</td>
+        <td style="padding:6px 8px;">${fmtSmallPct(s.pAny, 1)}</td>
       </tr>`;
     }).join("");
   }
